@@ -1,0 +1,12 @@
+services:
+  raspios-lite-builder:
+    build: .
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      IMG_URL: https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz
+      IMG_NAME: 2026-06-18-raspios-trixie-arm64-lite
+      IMG_PLATFORM: linux/arm64
+      GHCR_USERNAME: ${GHCR_USERNAME}
+      GHCR_TOKEN: ${GHCR_TOKEN}
+      PUSH_IMAGE: ${PUSH_IMAGE:-false}

@@ -1,0 +1,15 @@
+# Automatisches Erkennen und Normalisieren von Textdateien (erzwingt LF im Repository)
+* text=auto
+
+# Erzwingt LF für spezifische Dateien
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
+# Erzwingt CRLF für Windows-spezifische Batch-Dateien
+*.bat text eol=crlf
+
+# Git mitteilen, dass es sich um Binärdateien handelt (keine Konvertierung)
+*.png binary
+*.jpg binary
+*.pdf binary
