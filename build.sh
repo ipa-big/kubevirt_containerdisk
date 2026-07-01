@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 sudo apt-get update -qq > /dev/null 2>&1
-sudo apt-get install -qq -y qemu-utils kpartx dosfstools > /dev/null 2>&1
+sudo apt-get install -qq -y qemu-utils kpartx dosfstools qemu-user-static > /dev/null 2>&1
 
 # Download image
 wget -q ${IMG_URL}
@@ -23,22 +23,21 @@ sudo e2fsck -f /dev/mapper/loop0p2
 sudo resize2fs /dev/mapper/loop0p2
 
 # Mount
-mkdir -p /mnt/rpi_root
-mount /dev/mapper/loop0p2 /mnt/rpi_root
-mkdir -p /mnt/rpi_root/boot/efi
-mount /dev/mapper/loop0p1 /mnt/rpi_root/boot/efi
+sudo mkdir -p /mnt/rpi_root
+sudo mount /dev/mapper/loop0p2 /mnt/rpi_root
+sudo mkdir -p /mnt/rpi_root/boot/efi
+sudo mount /dev/mapper/loop0p1 /mnt/rpi_root/boot/efi
 
-apt update && apt install -y qemu-user-static
-cp /usr/bin/qemu-aarch64-static /mnt/rpi_root/usr/bin/
+sudo cp /usr/bin/qemu-aarch64-static /mnt/rpi_root/usr/bin/
 
-mount --bind /dev /mnt/rpi_root/dev
-mount --bind /proc /mnt/rpi_root/proc
-mount --bind /sys /mnt/rpi_root/sys
-mount --bind /run /mnt/rpi_root/run
+sudo mount --bind /dev /mnt/rpi_root/dev
+sudo mount --bind /proc /mnt/rpi_root/proc
+sudo mount --bind /sys /mnt/rpi_root/sys
+sudo mount --bind /run /mnt/rpi_root/run
 
 chroot /mnt/rpi_root
 
-apt update
+apt-get update -qq
 apt install -y linux-image-arm64 grub-efi-arm64
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
