@@ -53,7 +53,7 @@ sudo mount --bind /proc /mnt/rpi_root/proc
 sudo mount --bind /sys /mnt/rpi_root/sys
 sudo mount --bind /run /mnt/rpi_root/run
 
-sudo chroot /mnt/rpi_root /bin/bash -eux <<EOF
+sudo chroot /mnt/rpi_root /bin/bash -eux <<'EOF'
 apt-get update -qq
 apt-get install -qq -y linux-image-arm64 grub-efi-arm64
 
@@ -90,25 +90,14 @@ ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
 cp /etc/fstab /etc/fstab.bak
 
 cat << FSTAB > /etc/fstab
-UUID=\$ROOT_UUID / ext4 defaults,noatime 0 1
-UUID=\$BOOT_UUID /boot/efi vfat defaults 0 2
+UUID=$ROOT_UUID / ext4 defaults,noatime 0 1
+UUID=$BOOT_UUID /boot/efi vfat defaults 0 2
 FSTAB
 
-cat << GRUBCFG > /boot/grub/grub.cfg
-set default=0
-set timeout=0
-
-menuentry 'KubeVirt ARM64' {
-    insmod gzio
-    insmod part_gpt
-    insmod ext2
-    search --no-floppy --fs-uuid --set=root \$ROOT_UUID
-    linux /vmlinuz root=UUID=\$ROOT_UUID rootwait console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000
-    initrd /initrd.img
-}
-GRUBCFG
-
 rm -rf /boot/firmware
+ln -s efi /boot/firmware
+
+update-grub
 EOF
 
 sudo umount /mnt/rpi_root/dev /mnt/rpi_root/proc /mnt/rpi_root/sys /mnt/rpi_root/run
