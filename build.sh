@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+apt-get update -qq
+apt install -y qemu-utils kpartx dosfstools
+
 # Download image
 wget ${IMG_URL}
 
