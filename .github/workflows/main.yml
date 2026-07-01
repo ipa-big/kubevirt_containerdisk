@@ -30,7 +30,7 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
-        run: ./build.sh
+        run: bash ./build.sh
 #        run: docker compose up --build --abort-on-container-exit --exit-code-from raspios-lite-builder
 
 #      - name: Tear down docker-compose stack
