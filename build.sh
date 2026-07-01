@@ -37,7 +37,7 @@ sudo mount --bind /run /mnt/rpi_root/run
 
 sudo chroot /mnt/rpi_root /bin/bash -eux <<EOF
 apt-get update -qq
-apt install -y linux-image-arm64 grub-efi-arm64
+apt-get install -qq -y linux-image-arm64 grub-efi-arm64
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
 
@@ -54,8 +54,8 @@ FSTAB
 rm -rf /boot/firmware
 EOF
 
-umount /mnt/rpi_root/dev /mnt/rpi_root/proc /mnt/rpi_root/sys /mnt/rpi_root/run
-umount /mnt/rpi_root/boot/efi /mnt/rpi_root
+sudo umount /mnt/rpi_root/dev /mnt/rpi_root/proc /mnt/rpi_root/sys /mnt/rpi_root/run
+sudo umount /mnt/rpi_root/boot/efi /mnt/rpi_root
 
 qemu-img convert -f raw -O qcow2 *.img disc.qcow2
 
@@ -68,3 +68,5 @@ if [[ "${PUSH_IMAGE:-false}" == "true" ]]; then
 else
   docker buildx build --platform "${IMG_PLATFORM}" -t "${IMAGE_TAG}" .
 fi
+
+echo "Image built: ${IMAGE_TAG}"
