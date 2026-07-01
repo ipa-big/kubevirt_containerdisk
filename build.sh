@@ -66,25 +66,20 @@ update-initramfs -u -k all
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
 
-sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyS0,115200 rootwait"/' /etc/default/grub
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait"/' /etc/default/grub
 
-# Ensure serial terminal settings exist for both GRUB menu and kernel console use.
-if grep -q '^GRUB_TERMINAL_INPUT=' /etc/default/grub; then
-  sed -i 's/^GRUB_TERMINAL_INPUT=.*/GRUB_TERMINAL_INPUT="console serial"/' /etc/default/grub
+if grep -q '^GRUB_DISABLE_LINUX_PARTUUID=' /etc/default/grub; then
+  sed -i 's/^GRUB_DISABLE_LINUX_PARTUUID=.*/GRUB_DISABLE_LINUX_PARTUUID=true/' /etc/default/grub
 else
-  echo 'GRUB_TERMINAL_INPUT="console serial"' >> /etc/default/grub
+  echo 'GRUB_DISABLE_LINUX_PARTUUID=true' >> /etc/default/grub
 fi
 
-if grep -q '^GRUB_TERMINAL_OUTPUT=' /etc/default/grub; then
-  sed -i 's/^GRUB_TERMINAL_OUTPUT=.*/GRUB_TERMINAL_OUTPUT="console serial"/' /etc/default/grub
-else
-  echo 'GRUB_TERMINAL_OUTPUT="console serial"' >> /etc/default/grub
-fi
+sed -i '/^GRUB_TERMINAL_INPUT=/d;/^GRUB_TERMINAL_OUTPUT=/d;/^GRUB_SERIAL_COMMAND=/d' /etc/default/grub
 
-if grep -q '^GRUB_SERIAL_COMMAND=' /etc/default/grub; then
-  sed -i 's/^GRUB_SERIAL_COMMAND=.*/GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"/' /etc/default/grub
+if grep -q '^GRUB_TERMINAL=' /etc/default/grub; then
+  sed -i 's/^GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
 else
-  echo 'GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"' >> /etc/default/grub
+  echo 'GRUB_TERMINAL=console' >> /etc/default/grub
 fi
 
 update-grub
@@ -98,6 +93,20 @@ cat << FSTAB > /etc/fstab
 UUID=\$ROOT_UUID / ext4 defaults,noatime 0 1
 UUID=\$BOOT_UUID /boot/efi vfat defaults 0 2
 FSTAB
+
+cat << GRUBCFG > /boot/grub/grub.cfg
+set default=0
+set timeout=0
+
+menuentry 'KubeVirt ARM64' {
+    insmod gzio
+    insmod part_gpt
+    insmod ext2
+    search --no-floppy --fs-uuid --set=root \$ROOT_UUID
+    linux /vmlinuz root=UUID=\$ROOT_UUID rootwait console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000
+    initrd /initrd.img
+}
+GRUBCFG
 
 rm -rf /boot/firmware
 EOF
