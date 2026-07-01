@@ -35,7 +35,7 @@ sudo mount --bind /proc /mnt/rpi_root/proc
 sudo mount --bind /sys /mnt/rpi_root/sys
 sudo mount --bind /run /mnt/rpi_root/run
 
-chroot /mnt/rpi_root
+sudo chroot /mnt/rpi_root
 
 apt-get update -qq
 apt install -y linux-image-arm64 grub-efi-arm64
