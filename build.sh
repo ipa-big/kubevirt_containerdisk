@@ -37,7 +37,7 @@ sudo kpartx -av *.img
 sudo growpart /dev/loop0 2
 sudo kpartx -u *.img
 sudo parted /dev/loop0 set 1 esp on
-sudo e2fsck -f /dev/mapper/loop0p2
+sudo e2fsck -fp /dev/mapper/loop0p2 || sudo e2fsck -fy /dev/mapper/loop0p2
 sudo resize2fs /dev/mapper/loop0p2
 
 # Mount
