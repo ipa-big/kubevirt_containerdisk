@@ -95,8 +95,8 @@ ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
 cp /etc/fstab /etc/fstab.bak
 
 cat << FSTAB > /etc/fstab
-UUID=$ROOT_UUID / ext4 defaults,noatime 0 1
-UUID=$BOOT_UUID /boot/efi vfat defaults 0 2
+UUID=\$ROOT_UUID / ext4 defaults,noatime 0 1
+UUID=\$BOOT_UUID /boot/efi vfat defaults 0 2
 FSTAB
 
 rm -rf /boot/firmware
