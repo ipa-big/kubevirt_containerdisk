@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 sudo apt-get update -qq > /dev/null 2>&1
-sudo apt-get install -y qemu-utils kpartx dosfstools
+sudo apt-get install -qq -y qemu-utils kpartx dosfstools
 
 # Download image
 wget -q ${IMG_URL}
@@ -13,7 +13,7 @@ xz -d *.xz
 qemu-img resize *.img +2G
 
 # Loop device mapping
-kpartx -av *.img
+sudo kpartx -av *.img
 
 # Extend partition
 growpart /dev/loop0 2
