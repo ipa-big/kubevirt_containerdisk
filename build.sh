@@ -61,7 +61,7 @@ grep -qxF 'virtio' /etc/initramfs-tools/modules || echo 'virtio' >> /etc/initram
 grep -qxF 'virtio_blk' /etc/initramfs-tools/modules || echo 'virtio_blk' >> /etc/initramfs-tools/modules
 grep -qxF 'virtio_pci' /etc/initramfs-tools/modules || echo 'virtio_pci' >> /etc/initramfs-tools/modules
 grep -qxF 'virtio_net' /etc/initramfs-tools/modules || echo 'virtio_net' >> /etc/initramfs-tools/modules
-update-initramfs -u -k --all
+update-initramfs -u -k
 
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
