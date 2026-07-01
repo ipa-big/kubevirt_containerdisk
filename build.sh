@@ -6,11 +6,64 @@ wget ${IMG_URL}
 # Decompress image
 xz -d *.xz
 
+# Expand image
+qemu-img resize *.img +2G
+
 # Convert image to qcow2 format
 qemu-img convert -f raw -O qcow2 *.img disk.qcow2
 
+# Loop device mapping
+kpartx -av *.img
+
+# Extend partition
+growpart /dev/loop0 2
+kpartx -u *.img
+parted /dev/loop0 set 1 esp on
+e2fsck -f /dev/mapper/loop0p2
+resize2fs /dev/mapper/loop0p2
+
+# Mount
+mkdir -p /mnt/rpi_root
+mount /dev/mapper/loop0p2 /mnt/rpi_root
+mkdir -p /mnt/rpi_root/boot/efi
+mount /dev/mapper/loop0p1 /mnt/rpi_root/boot/efi
+
+apt update && apt install -y qemu-user-static
+cp /usr/bin/qemu-aarch64-static /mnt/rpi_root/usr/bin/
+
+mount --bind /dev /mnt/rpi_root/dev
+mount --bind /proc /mnt/rpi_root/proc
+mount --bind /sys /mnt/rpi_root/sys
+mount --bind /run /mnt/rpi_root/run
+
+chroot /mnt/rpi_root
+
+apt update
+apt install -y linux-image-arm64 grub-efi-arm64
+grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
+update-grub
+
+BOOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p1)
+ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
+
+cp /etc/fstab /etc/fstab.bak
+
+cat << EOF > /etc/fstab
+UUID=$ROOT_UUID / ext4 defaults,noatime 0 1
+UUID=$BOOT_UUID /boot/efi vfat defaults 0 2
+EOF
+
+rm -rf /boot/firmware
+
+exit
+
+umount /mnt/rpi_root/dev /mnt/rpi_root/proc /mnt/rpi_root/sys /mnt/rpi_root/run
+umount /mnt/rpi_root/boot/efi /mnt/rpi_root
+
+qemu-img convert -f raw -O qcow2 *.img disc.qcow2
+
 # Build containerdisk
-IMAGE_TAG="ghcr.io/ipa-big/kubevirt_containerdisk/${IMG_NAME}"
+IMAGE_TAG="ghcr.io/ipa-big/kubevirt_containerdisk/${IMG_NAME}_uefi"
 
 if [[ "${PUSH_IMAGE:-false}" == "true" ]]; then
   echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin

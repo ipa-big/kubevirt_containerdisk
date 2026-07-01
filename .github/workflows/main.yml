@@ -25,13 +25,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run docker-compose workload from repo root
+      - name: Run build script #docker-compose workload from repo root
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
-        run: docker compose up --build --abort-on-container-exit --exit-code-from raspios-lite-builder
+        run: ./build.sh
+#        run: docker compose up --build --abort-on-container-exit --exit-code-from raspios-lite-builder
 
-      - name: Tear down docker-compose stack
-        if: always()
-        run: docker compose down --volumes --remove-orphans
+#      - name: Tear down docker-compose stack
+#        if: always()
+#        run: docker compose down --volumes --remove-orphans
