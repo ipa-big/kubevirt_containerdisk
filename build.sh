@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 sudo apt-get update -qq > /dev/null 2>&1
-sudo apt-get install -qq -y qemu-utils kpartx dosfstools
+sudo apt-get install -qq -y qemu-utils kpartx dosfstools > /dev/null 2>&1
 
 # Download image
 wget -q ${IMG_URL}
@@ -16,11 +16,11 @@ qemu-img resize *.img +2G
 sudo kpartx -av *.img
 
 # Extend partition
-growpart /dev/loop0 2
-kpartx -u *.img
-parted /dev/loop0 set 1 esp on
-e2fsck -f /dev/mapper/loop0p2
-resize2fs /dev/mapper/loop0p2
+sudo growpart /dev/loop0 2
+sudo kpartx -u *.img
+sudo parted /dev/loop0 set 1 esp on
+sudo e2fsck -f /dev/mapper/loop0p2
+sudo resize2fs /dev/mapper/loop0p2
 
 # Mount
 mkdir -p /mnt/rpi_root
