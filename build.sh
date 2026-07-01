@@ -35,8 +35,7 @@ sudo mount --bind /proc /mnt/rpi_root/proc
 sudo mount --bind /sys /mnt/rpi_root/sys
 sudo mount --bind /run /mnt/rpi_root/run
 
-sudo chroot /mnt/rpi_root
-
+sudo chroot /mnt/rpi_root /bin/bash -eux <<EOF
 apt-get update -qq
 apt install -y linux-image-arm64 grub-efi-arm64
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
@@ -47,14 +46,13 @@ ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
 
 cp /etc/fstab /etc/fstab.bak
 
-cat << EOF > /etc/fstab
+cat << FSTAB > /etc/fstab
 UUID=$ROOT_UUID / ext4 defaults,noatime 0 1
 UUID=$BOOT_UUID /boot/efi vfat defaults 0 2
-EOF
+FSTAB
 
 rm -rf /boot/firmware
-
-exit
+EOF
 
 umount /mnt/rpi_root/dev /mnt/rpi_root/proc /mnt/rpi_root/sys /mnt/rpi_root/run
 umount /mnt/rpi_root/boot/efi /mnt/rpi_root
