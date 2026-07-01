@@ -30,6 +30,9 @@ jobs:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
+          IMG_URL: https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz
+          IMG_NAME: 2026-06-18-raspios-trixie-arm64-lite
+          IMG_PLATFORM: linux/arm64
         run: bash ./build.sh
 #        run: docker compose up --build --abort-on-container-exit --exit-code-from raspios-lite-builder
 
