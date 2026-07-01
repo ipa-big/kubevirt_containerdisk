@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
 
-apt-get update -qq > /dev/null 2>&1
-apt-get install -y qemu-utils kpartx dosfstools
+sudo apt-get update -qq > /dev/null 2>&1
+sudo apt-get install -y qemu-utils kpartx dosfstools
 
 # Download image
-wget ${IMG_URL}
+wget -q ${IMG_URL}
 
 # Decompress image
 xz -d *.xz
 
 # Expand image
 qemu-img resize *.img +2G
-
-# Convert image to qcow2 format
-qemu-img convert -f raw -O qcow2 *.img disk.qcow2
 
 # Loop device mapping
 kpartx -av *.img
