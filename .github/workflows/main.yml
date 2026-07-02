@@ -1,4 +1,4 @@
-name: Docker Compose Workload
+name: Raspberry Pi Containerdisk Builder
 
 on:
   push:
@@ -8,7 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-docker-compose:
+  validate-raspberry-pi-containerdisk:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run dedicated Raspberry Pi containerdisk builder validation
+        env:
+          PUSH_IMAGE: 'false'
+        run: bash ./build-raspios-lite-containerdisk.sh
+
+  publish-raspberry-pi-containerdisk:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,26 +33,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      - name: Resolve containerdisk image tag
+        id: image-tag
+        shell: bash
+        run: |
+          source ./build-raspios-lite-containerdisk.sh
+          echo "value=$(default_image_tag)" >> "${GITHUB_OUTPUT}"
+      - name: Run dedicated Raspberry Pi containerdisk builder
+        env:
+          IMAGE_TAG_OVERRIDE: ${{ steps.image-tag.outputs.value }}
+          PUSH_IMAGE: 'false'
+        run: bash ./build-raspios-lite-containerdisk.sh
       - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run build script #docker-compose workload from repo root
-        env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
-          IMG_URL: https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz
-          IMG_NAME: 2026-06-18-raspios-trixie-arm64-lite
-          IMG_PLATFORM: linux/arm64
-        run: bash ./build.sh
-#        run: docker compose up --build --abort-on-container-exit --exit-code-from raspios-lite-builder
-
-#      - name: Tear down docker-compose stack
-#        if: always()
-#        run: docker compose down --volumes --remove-orphans
+      - name: Push prepared Raspberry Pi containerdisk image
+        run: docker push "${{ steps.image-tag.outputs.value }}"
