@@ -21,6 +21,12 @@ assert_contains() {
   [[ "${haystack}" == *"${needle}"* ]] || fail "expected '${haystack}' to contain '${needle}'"
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  [[ "${haystack}" != *"${needle}"* ]] || fail "expected '${haystack}' to not contain '${needle}'"
+}
+
 extract_job_block() {
   local job_name="$1"
 
@@ -150,10 +156,49 @@ test_validate_bootstrap_tools_requires_early_commands() {
 
   local commands=()
   require_command() { commands+=("$1"); }
+  docker() { :; }
 
   validate_bootstrap_tools
 
   assert_eq "${commands[*]}" "apt-get awk bash chroot cp docker mount mountpoint sudo umount"
+}
+
+test_validate_bootstrap_tools_fails_without_docker_daemon_access() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local docker_calls=()
+  require_command() { :; }
+  docker() {
+    docker_calls+=("$*")
+    [[ "$1" == "info" ]] && return 1
+    return 0
+  }
+
+  if validate_bootstrap_tools >/dev/null 2>&1; then
+    fail "expected validate_bootstrap_tools to fail when docker daemon access is unavailable"
+  fi
+
+  assert_eq "${docker_calls[*]}" "info"
+}
+
+test_validate_bootstrap_tools_fails_without_buildx() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local docker_calls=()
+  require_command() { :; }
+  docker() {
+    docker_calls+=("$*")
+    [[ "${1:-} ${2:-}" == "buildx version" ]] && return 1
+    return 0
+  }
+
+  if validate_bootstrap_tools >/dev/null 2>&1; then
+    fail "expected validate_bootstrap_tools to fail when docker buildx is unavailable"
+  fi
+
+  assert_eq "${docker_calls[*]}" "info buildx version"
 }
 
 test_validate_host_tools_requires_full_command_set() {
@@ -162,6 +207,7 @@ test_validate_host_tools_requires_full_command_set() {
 
   local commands=()
   require_command() { commands+=("$1"); }
+  docker() { :; }
 
   validate_host_tools
 
@@ -223,6 +269,28 @@ test_download_source_image_verifies_pinned_checksum_before_extracting() {
   assert_eq "${checksum_input}" "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3  2026-06-18-raspios-trixie-arm64-lite.img.xz"
 }
 
+test_download_source_image_stops_before_extracting_when_checksum_fails() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local calls=()
+  rm() { calls+=("rm:$*"); }
+  wget() { calls+=("wget:$*"); }
+  sha256sum() {
+    calls+=("sha256sum:$*")
+    cat >/dev/null
+    return 1
+  }
+  xz() { calls+=("xz:$*"); }
+  log_step() { :; }
+
+  if download_source_image >/dev/null 2>&1; then
+    fail "expected download_source_image to fail when checksum verification fails"
+  fi
+
+  assert_eq "${calls[*]}" "rm:-f 2026-06-18-raspios-trixie-arm64-lite.img.xz 2026-06-18-raspios-trixie-arm64-lite.img disc.qcow2 disk.qcow2 wget:-q -O 2026-06-18-raspios-trixie-arm64-lite.img.xz https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz sha256sum:-c -"
+}
+
 test_build_containerdisk_image_pushes_with_repository_dockerfile() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
@@ -282,22 +350,25 @@ test_workflow_uses_new_script() {
     || fail "workflow is not using the new script"
 }
 
-test_workflow_separates_pr_validation_from_publish() {
-  local pr_job publish_job
-  pr_job="$(extract_job_block "validate-raspberry-pi-containerdisk-pr")"
+test_workflow_restricts_publish_to_trusted_main_pushes() {
+  local validate_job publish_job
+  validate_job="$(extract_job_block "validate-raspberry-pi-containerdisk")"
   publish_job="$(extract_job_block "publish-raspberry-pi-containerdisk")"
 
-  assert_contains "${pr_job}" "if: github.event_name == 'pull_request'"
-  assert_contains "${pr_job}" "persist-credentials: false"
-  assert_contains "${pr_job}" "PUSH_IMAGE: 'false'"
-  [[ "${pr_job}" != *"packages: write"* ]] || fail "pull_request validation job still has packages: write"
-  [[ "${pr_job}" != *"GHCR_TOKEN"* ]] || fail "pull_request validation job still exposes GHCR_TOKEN"
-  [[ "${pr_job}" != *"GITHUB_TOKEN"* ]] || fail "pull_request validation job still exposes GITHUB_TOKEN"
+  printf '%s\n' "${validate_job}" | grep -Fxq "    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'" \
+    || fail "validation job is not restricted to non-publish pull_request/workflow_dispatch events"
+  assert_contains "${validate_job}" "persist-credentials: false"
+  assert_contains "${validate_job}" "PUSH_IMAGE: 'false'"
+  assert_not_contains "${validate_job}" "packages: write"
+  assert_not_contains "${validate_job}" "GHCR_TOKEN"
+  assert_not_contains "${validate_job}" "GITHUB_TOKEN"
 
-  assert_contains "${publish_job}" "if: github.event_name != 'pull_request'"
+  printf '%s\n' "${publish_job}" | grep -Fxq "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" \
+    || fail "publish job is not restricted to trusted main pushes"
   assert_contains "${publish_job}" "packages: write"
   assert_contains "${publish_job}" "docker/login-action@v3"
   assert_contains "${publish_job}" "GHCR_TOKEN: \${{ secrets.GITHUB_TOKEN }}"
+  assert_contains "${publish_job}" "PUSH_IMAGE: 'true'"
 }
 
 test_workflow_publish_job_has_single_login_step() {
@@ -313,12 +384,17 @@ test_workflow_renames_docker_compose_references() {
 }
 
 test_readme_documents_new_script() {
+  local readme
+  readme="$(<"${ROOT_DIR}/README.md")"
+
   grep -Fq 'build-raspios-lite-containerdisk.sh' "${ROOT_DIR}/README.md" \
     || fail "README does not document the new script"
   grep -Fq 'disc.qcow2' "${ROOT_DIR}/README.md" \
     || fail "README does not document the disc.qcow2 artifact"
   grep -Fq '/disk/disk.qcow2' "${ROOT_DIR}/README.md" \
     || fail "README does not document the packaged /disk/disk.qcow2 path"
+  assert_contains "${readme}" 'GHCR_USERNAME` and `GHCR_TOKEN` are required only when publishing'
+  assert_contains "${readme}" 'Set `PUSH_IMAGE=false` to validate the build without publishing'
 }
 
 test_dockerfile_packages_disc_at_kubevirt_path() {
@@ -333,15 +409,18 @@ test_main_prefers_image_tag_override
 test_validate_runtime_inputs_skips_ghcr_credentials_when_push_disabled
 test_validate_runtime_inputs_rejects_invalid_push_image_value
 test_validate_bootstrap_tools_requires_early_commands
+test_validate_bootstrap_tools_fails_without_docker_daemon_access
+test_validate_bootstrap_tools_fails_without_buildx
 test_validate_host_tools_requires_full_command_set
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir
 test_convert_to_qcow2_writes_disc_qcow2
 test_download_source_image_verifies_pinned_checksum_before_extracting
+test_download_source_image_stops_before_extracting_when_checksum_fails
 test_build_containerdisk_image_pushes_with_repository_dockerfile
 test_build_containerdisk_image_validates_without_publishing_when_push_disabled
 test_source_fails_for_readonly_fixed_source_constants
 test_workflow_uses_new_script
-test_workflow_separates_pr_validation_from_publish
+test_workflow_restricts_publish_to_trusted_main_pushes
 test_workflow_publish_job_has_single_login_step
 test_workflow_renames_docker_compose_references
 test_readme_documents_new_script

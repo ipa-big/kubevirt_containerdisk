@@ -4,21 +4,23 @@ Use `build-raspios-lite-containerdisk.sh` to build a KubeVirt-ready containerdis
 
 ### Required environment variables
 
-- `GHCR_USERNAME`
-- `GHCR_TOKEN`
 - `IMAGE_TAG_OVERRIDE` (optional)
 - `PUSH_IMAGE` (optional, defaults to `true`; set to `false` to validate without publishing)
 
+`GHCR_USERNAME` and `GHCR_TOKEN` are required only when publishing.
+
 ### Local usage
 
+Set `PUSH_IMAGE=false` to validate the build without publishing:
+
 ```bash
-export GHCR_USERNAME=your-github-user
-export GHCR_TOKEN=your-ghcr-token
 export PUSH_IMAGE=false
 bash ./build-raspios-lite-containerdisk.sh
 ```
 
-The script generates `disc.qcow2` and packages it at `/disk/disk.qcow2`, ready to use as a KubeVirt containerdisk. Leave `PUSH_IMAGE` unset (or `true`) to publish to GHCR.
+To publish to GHCR, export `GHCR_USERNAME` and `GHCR_TOKEN`, then leave `PUSH_IMAGE` unset (or set it to `true`) before running the script.
+
+The script generates `disc.qcow2` and packages it at `/disk/disk.qcow2`, ready to use as a KubeVirt containerdisk.
 
 ## References
 

@@ -56,8 +56,8 @@ validate_runtime_inputs() {
   local push_image_status=0
 
   if should_push_image; then
-    require_env "GHCR_USERNAME"
-    require_env "GHCR_TOKEN"
+    require_env "GHCR_USERNAME" || return 1
+    require_env "GHCR_TOKEN" || return 1
   else
     push_image_status=$?
     if [[ "${push_image_status}" -ne 1 ]]; then
@@ -69,15 +69,25 @@ validate_runtime_inputs() {
 validate_bootstrap_tools() {
   local cmd
   for cmd in apt-get awk bash chroot cp docker mount mountpoint sudo umount; do
-    require_command "${cmd}"
+    require_command "${cmd}" || return 1
   done
+
+  docker info >/dev/null 2>&1 || {
+    echo "Error: Docker daemon is not accessible." >&2
+    return 1
+  }
+
+  docker buildx version >/dev/null 2>&1 || {
+    echo "Error: docker buildx is not available." >&2
+    return 1
+  }
 }
 
 validate_host_tools() {
   local cmd
-  validate_bootstrap_tools
+  validate_bootstrap_tools || return 1
   for cmd in e2fsck growpart kpartx parted qemu-aarch64-static qemu-img resize2fs sha256sum wget xz; do
-    require_command "${cmd}"
+    require_command "${cmd}" || return 1
   done
 }
 
@@ -118,7 +128,7 @@ download_source_image() {
   IMAGE_FILE="${IMG_NAME}.img"
   rm -f "${IMAGE_ARCHIVE}" "${IMAGE_FILE}" disc.qcow2 disk.qcow2
   wget -q -O "${IMAGE_ARCHIVE}" "${IMG_URL}"
-  sha256sum -c - <<< "${IMG_SHA256}  ${IMAGE_ARCHIVE}"
+  sha256sum -c - <<< "${IMG_SHA256}  ${IMAGE_ARCHIVE}" || return 1
   xz -d "${IMAGE_ARCHIVE}"
 }
 
