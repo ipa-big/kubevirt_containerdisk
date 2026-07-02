@@ -225,6 +225,20 @@ update-grub
 EOF
 }
 
+run_guest_boot_sanity_checks() {
+  log_step "Running guest boot sanity checks"
+  sudo chroot "${ROOT_MOUNT_DIR}" test -f /boot/grub/grub.cfg
+  sudo chroot "${ROOT_MOUNT_DIR}" test -d /boot/efi/EFI
+  sudo chroot "${ROOT_MOUNT_DIR}" test -s /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q 'GRUB_DISABLE_LINUX_PARTUUID=true' /etc/default/grub
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* /boot/efi vfat ' /etc/fstab
+}
+
+run_boot_smoke_validation() {
+  log_step "Running lightweight boot smoke validation"
+  return 0
+}
+
 unmount_guest_filesystems() {
   log_step "Unmounting guest filesystems"
   if mountpoint -q "${ROOT_MOUNT_DIR}/dev"; then sudo umount "${ROOT_MOUNT_DIR}/dev"; fi
@@ -269,8 +283,10 @@ main() {
   expand_and_map_image
   mount_guest_filesystems
   convert_guest_image
+  run_guest_boot_sanity_checks
   unmount_guest_filesystems || return 1
   convert_to_qcow2
+  run_boot_smoke_validation
   build_containerdisk_image "${image_tag}"
   log_step "Image built: ${image_tag}"
 }

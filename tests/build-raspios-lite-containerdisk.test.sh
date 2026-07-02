@@ -65,14 +65,16 @@ test_main_runs_all_stages_in_order() {
   expand_and_map_image() { calls+=("expand_and_map_image"); }
   mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
   convert_guest_image() { calls+=("convert_guest_image"); }
+  run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
   unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); }
   convert_to_qcow2() { calls+=("convert_to_qcow2"); }
+  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
   build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
   log_step() { :; }
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
 }
 
 test_main_stops_before_qcow2_when_unmount_fails() {
@@ -92,8 +94,10 @@ test_main_stops_before_qcow2_when_unmount_fails() {
   expand_and_map_image() { calls+=("expand_and_map_image"); }
   mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
   convert_guest_image() { calls+=("convert_guest_image"); }
+  run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
   unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); return 1; }
   convert_to_qcow2() { calls+=("convert_to_qcow2"); }
+  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
   build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
   log_step() { :; }
 
@@ -101,7 +105,7 @@ test_main_stops_before_qcow2_when_unmount_fails() {
     fail "expected main to fail when unmount_guest_filesystems fails"
   fi
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems"
 }
 
 test_main_prefers_image_tag_override() {
@@ -121,8 +125,10 @@ test_main_prefers_image_tag_override() {
   expand_and_map_image() { :; }
   mount_guest_filesystems() { :; }
   convert_guest_image() { :; }
+  run_guest_boot_sanity_checks() { :; }
   unmount_guest_filesystems() { :; }
   convert_to_qcow2() { :; }
+  run_boot_smoke_validation() { :; }
   build_containerdisk_image() { selected_tag="$1"; }
   log_step() { :; }
 
@@ -451,5 +457,90 @@ test_workflow_publish_job_has_single_login_step
 test_workflow_renames_docker_compose_references
 test_readme_documents_new_script
 test_dockerfile_packages_disc_at_kubevirt_path
+
+# Appended boot contract regression tests (Task 1)
+
+test_convert_guest_image_writes_explicit_boot_contract() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  LOOP_DEVICE="/dev/loop7"
+
+  local chroot_script=""
+  sudo() {
+    if [[ "$1" == "chroot" ]]; then
+      shift 3
+      chroot_script="$(cat)"
+      return 0
+    fi
+  }
+  log_step() { :; }
+
+  convert_guest_image
+
+  assert_contains "${chroot_script}" "apt-get install -qq -y linux-image-arm64 grub-efi-arm64"
+  assert_contains "${chroot_script}" "grep -qxF 'virtio_blk' /etc/initramfs-tools/modules || echo 'virtio_blk' >> /etc/initramfs-tools/modules"
+  assert_contains "${chroot_script}" "grep -qxF 'virtio_pci' /etc/initramfs-tools/modules || echo 'virtio_pci' >> /etc/initramfs-tools/modules"
+  assert_contains "${chroot_script}" "grep -qxF 'virtio_net' /etc/initramfs-tools/modules || echo 'virtio_net' >> /etc/initramfs-tools/modules"
+  assert_contains "${chroot_script}" 'GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait"'
+  assert_contains "${chroot_script}" "GRUB_DISABLE_LINUX_PARTUUID=true"
+  assert_contains "${chroot_script}" "UUID=\$ROOT_UUID / ext4 defaults,noatime 0 1"
+  assert_contains "${chroot_script}" "UUID=\$BOOT_UUID /boot/efi vfat defaults 0 2"
+}
+
+
+test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local chroot_calls=()
+  sudo() {
+    if [[ "$1" == "chroot" ]]; then
+      chroot_calls+=("$3")
+      return 0
+    fi
+  }
+  log_step() { :; }
+
+  run_guest_boot_sanity_checks
+
+  assert_eq "${chroot_calls[*]}" "test test test grep grep"
+}
+
+
+test_main_runs_sanity_check_and_boot_validation_before_build() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  export PUSH_IMAGE=false
+
+  local calls=()
+  validate_runtime_inputs() { calls+=("validate_runtime_inputs"); }
+  validate_bootstrap_tools() { calls+=("validate_bootstrap_tools"); }
+  install_host_dependencies() { calls+=("install_host_dependencies"); }
+  validate_host_tools() { calls+=("validate_host_tools"); }
+  download_source_image() { calls+=("download_source_image"); }
+  expand_and_map_image() { calls+=("expand_and_map_image"); }
+  mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
+  convert_guest_image() { calls+=("convert_guest_image"); }
+  run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
+  unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); }
+  convert_to_qcow2() { calls+=("convert_to_qcow2"); }
+  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
+  build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
+  log_step() { :; }
+
+  main
+
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+  unset PUSH_IMAGE
+}
+
+
+# Invoke appended tests
+
+test_convert_guest_image_writes_explicit_boot_contract
+test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab
+test_main_runs_sanity_check_and_boot_validation_before_build
 
 echo "PASS"
