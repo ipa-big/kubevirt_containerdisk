@@ -496,9 +496,8 @@ test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab() {
   local chroot_calls=()
   sudo() {
     if [[ "$1" == "chroot" ]]; then
-      # remove 'chroot' and the root-mount-dir arg, capture the invoked command and args
-      shift 2
-      chroot_calls+=("$(printf '%s ' "$@" | sed 's/ $//')")
+      shift 1
+      chroot_calls+=("$*")
       return 0
     fi
   }
@@ -506,13 +505,16 @@ test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab() {
 
   run_guest_boot_sanity_checks
 
-  assert_eq "${chroot_calls[0]}" "test -f /boot/grub/grub.cfg"
-  assert_eq "${chroot_calls[1]}" "test -d /boot/efi/EFI"
-  assert_eq "${chroot_calls[2]}" "test -s /etc/fstab"
-  assert_eq "${chroot_calls[3]}" "grep -q GRUB_DISABLE_LINUX_PARTUUID=true /etc/default/grub"
-  assert_contains "${chroot_calls[4]}" "/boot/efi vfat"
-  assert_contains "${chroot_calls[4]}" "/etc/fstab"
-  assert_contains "${chroot_calls[4]}" "^UUID=.*"
+  assert_eq "${chroot_calls[0]}" '/mnt/rpi_root test -f /boot/grub/grub.cfg'
+  assert_eq "${chroot_calls[1]}" '/mnt/rpi_root test -d /boot/efi/EFI'
+  assert_eq "${chroot_calls[2]}" '/mnt/rpi_root bash -lc ls /boot/initrd.img-* >/dev/null'
+  assert_eq "${chroot_calls[3]}" '/mnt/rpi_root bash -lc ls /boot/vmlinuz-* >/dev/null'
+  assert_eq "${chroot_calls[4]}" '/mnt/rpi_root grep -q GRUB_DISABLE_LINUX_PARTUUID=true /etc/default/grub'
+  assert_eq "${chroot_calls[5]}" '/mnt/rpi_root grep -q ^UUID=.* / ext4 defaults,noatime 0 1$ /etc/fstab'
+  assert_eq "${chroot_calls[6]}" '/mnt/rpi_root grep -q ^UUID=.* /boot/efi vfat defaults 0 2$ /etc/fstab'
+  assert_eq "${chroot_calls[7]}" '/mnt/rpi_root grep -q ^virtio_blk$ /etc/initramfs-tools/modules'
+  assert_eq "${chroot_calls[8]}" '/mnt/rpi_root grep -q ^virtio_pci$ /etc/initramfs-tools/modules'
+  assert_eq "${chroot_calls[9]}" '/mnt/rpi_root grep -q ^virtio_net$ /etc/initramfs-tools/modules'
 }
 
 
@@ -545,10 +547,36 @@ test_main_runs_sanity_check_and_boot_validation_before_build() {
 }
 
 
+test_convert_guest_image_runs_update_initramfs_after_module_and_grub_changes() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  LOOP_DEVICE="/dev/loop7"
+
+  local chroot_script=""
+  sudo() {
+    if [[ "$1" == "chroot" ]]; then
+      shift 3
+      chroot_script="$(cat)"
+      return 0
+    fi
+  }
+  log_step() { :; }
+
+  convert_guest_image
+
+  assert_contains "${chroot_script}" "update-initramfs -u -k all"
+  assert_contains "${chroot_script}" "grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable"
+  assert_contains "${chroot_script}" "update-grub"
+  assert_contains "${chroot_script}" "ln -s efi /boot/firmware"
+}
+
+
 # Invoke appended tests
 
 test_convert_guest_image_writes_explicit_boot_contract
 test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab
 test_main_runs_sanity_check_and_boot_validation_before_build
+test_convert_guest_image_runs_update_initramfs_after_module_and_grub_changes
 
 echo "PASS"

@@ -229,9 +229,14 @@ run_guest_boot_sanity_checks() {
   log_step "Running guest boot sanity checks"
   sudo chroot "${ROOT_MOUNT_DIR}" test -f /boot/grub/grub.cfg
   sudo chroot "${ROOT_MOUNT_DIR}" test -d /boot/efi/EFI
-  sudo chroot "${ROOT_MOUNT_DIR}" test -s /etc/fstab
-  sudo chroot "${ROOT_MOUNT_DIR}" grep -q 'GRUB_DISABLE_LINUX_PARTUUID=true' /etc/default/grub
-  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* /boot/efi vfat ' /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" bash -lc 'ls /boot/initrd.img-* >/dev/null'
+  sudo chroot "${ROOT_MOUNT_DIR}" bash -lc 'ls /boot/vmlinuz-* >/dev/null'
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q GRUB_DISABLE_LINUX_PARTUUID=true /etc/default/grub
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* / ext4 defaults,noatime 0 1$' /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* /boot/efi vfat defaults 0 2$' /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_blk$' /etc/initramfs-tools/modules
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_pci$' /etc/initramfs-tools/modules
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_net$' /etc/initramfs-tools/modules
 }
 
 run_boot_smoke_validation() {
