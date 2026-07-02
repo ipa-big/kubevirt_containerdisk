@@ -23,6 +23,7 @@ set_fixed_constant() {
 
 set_fixed_constant IMG_URL "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz"
 set_fixed_constant IMG_NAME "2026-06-18-raspios-trixie-arm64-lite"
+set_fixed_constant IMG_SHA256 "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3"
 set_fixed_constant IMG_PLATFORM "linux/arm64"
 set_fixed_constant ROOT_MOUNT_DIR "/mnt/rpi_root"
 set_fixed_constant EFI_MOUNT_DIR "${ROOT_MOUNT_DIR}/boot/efi"
@@ -65,9 +66,17 @@ validate_runtime_inputs() {
   fi
 }
 
+validate_bootstrap_tools() {
+  local cmd
+  for cmd in apt-get awk bash chroot cp docker mount mountpoint sudo umount; do
+    require_command "${cmd}"
+  done
+}
+
 validate_host_tools() {
   local cmd
-  for cmd in bash chroot docker mount mountpoint sudo wget xz; do
+  validate_bootstrap_tools
+  for cmd in e2fsck growpart kpartx parted qemu-aarch64-static qemu-img resize2fs sha256sum wget xz; do
     require_command "${cmd}"
   done
 }
@@ -109,6 +118,7 @@ download_source_image() {
   IMAGE_FILE="${IMG_NAME}.img"
   rm -f "${IMAGE_ARCHIVE}" "${IMAGE_FILE}" disc.qcow2 disk.qcow2
   wget -q -O "${IMAGE_ARCHIVE}" "${IMG_URL}"
+  sha256sum -c - <<< "${IMG_SHA256}  ${IMAGE_ARCHIVE}"
   xz -d "${IMAGE_ARCHIVE}"
 }
 
@@ -242,8 +252,9 @@ main() {
   local image_tag="${IMAGE_TAG_OVERRIDE:-$(default_image_tag)}"
 
   validate_runtime_inputs
-  validate_host_tools
+  validate_bootstrap_tools
   install_host_dependencies
+  validate_host_tools
   download_source_image
   expand_and_map_image
   mount_guest_filesystems

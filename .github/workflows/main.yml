@@ -8,7 +8,24 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-raspberry-pi-containerdisk:
+  validate-raspberry-pi-containerdisk-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run dedicated Raspberry Pi containerdisk builder validation
+        env:
+          PUSH_IMAGE: 'false'
+        run: bash ./build-raspios-lite-containerdisk.sh
+
+  publish-raspberry-pi-containerdisk:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,9 +33,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Login to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -29,5 +44,5 @@ jobs:
         env:
           GHCR_USERNAME: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUSH_IMAGE: ${{ github.event_name != 'pull_request' }}
+          PUSH_IMAGE: 'true'
         run: bash ./build-raspios-lite-containerdisk.sh

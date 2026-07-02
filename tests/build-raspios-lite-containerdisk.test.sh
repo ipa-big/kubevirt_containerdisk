@@ -21,6 +21,20 @@ assert_contains() {
   [[ "${haystack}" == *"${needle}"* ]] || fail "expected '${haystack}' to contain '${needle}'"
 }
 
+extract_job_block() {
+  local job_name="$1"
+
+  awk -v job_name="${job_name}" '
+    $0 ~ "^  " job_name ":" { in_job=1 }
+    in_job {
+      if ($0 ~ "^  [A-Za-z0-9_-]+:" && $0 !~ "^  " job_name ":") {
+        exit
+      }
+      print
+    }
+  ' "${ROOT_DIR}/.github/workflows/main.yml"
+}
+
 test_main_runs_all_stages_in_order() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
@@ -31,8 +45,9 @@ test_main_runs_all_stages_in_order() {
 
   local calls=()
   validate_runtime_inputs() { calls+=("validate_runtime_inputs"); }
-  validate_host_tools() { calls+=("validate_host_tools"); }
+  validate_bootstrap_tools() { calls+=("validate_bootstrap_tools"); }
   install_host_dependencies() { calls+=("install_host_dependencies"); }
+  validate_host_tools() { calls+=("validate_host_tools"); }
   download_source_image() { calls+=("download_source_image"); }
   expand_and_map_image() { calls+=("expand_and_map_image"); }
   mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
@@ -44,7 +59,7 @@ test_main_runs_all_stages_in_order() {
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_host_tools install_host_dependencies download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
 }
 
 test_main_stops_before_qcow2_when_unmount_fails() {
@@ -57,8 +72,9 @@ test_main_stops_before_qcow2_when_unmount_fails() {
 
   local calls=()
   validate_runtime_inputs() { calls+=("validate_runtime_inputs"); }
-  validate_host_tools() { calls+=("validate_host_tools"); }
+  validate_bootstrap_tools() { calls+=("validate_bootstrap_tools"); }
   install_host_dependencies() { calls+=("install_host_dependencies"); }
+  validate_host_tools() { calls+=("validate_host_tools"); }
   download_source_image() { calls+=("download_source_image"); }
   expand_and_map_image() { calls+=("expand_and_map_image"); }
   mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
@@ -72,7 +88,7 @@ test_main_stops_before_qcow2_when_unmount_fails() {
     fail "expected main to fail when unmount_guest_filesystems fails"
   fi
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_host_tools install_host_dependencies download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems"
 }
 
 test_main_prefers_image_tag_override() {
@@ -85,8 +101,9 @@ test_main_prefers_image_tag_override() {
 
   local selected_tag=""
   validate_runtime_inputs() { :; }
-  validate_host_tools() { :; }
+  validate_bootstrap_tools() { :; }
   install_host_dependencies() { :; }
+  validate_host_tools() { :; }
   download_source_image() { :; }
   expand_and_map_image() { :; }
   mount_guest_filesystems() { :; }
@@ -127,6 +144,30 @@ test_validate_runtime_inputs_rejects_invalid_push_image_value() {
   unset PUSH_IMAGE
 }
 
+test_validate_bootstrap_tools_requires_early_commands() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local commands=()
+  require_command() { commands+=("$1"); }
+
+  validate_bootstrap_tools
+
+  assert_eq "${commands[*]}" "apt-get awk bash chroot cp docker mount mountpoint sudo umount"
+}
+
+test_validate_host_tools_requires_full_command_set() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local commands=()
+  require_command() { commands+=("$1"); }
+
+  validate_host_tools
+
+  assert_eq "${commands[*]}" "apt-get awk bash chroot cp docker mount mountpoint sudo umount e2fsck growpart kpartx parted qemu-aarch64-static qemu-img resize2fs sha256sum wget xz"
+}
+
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
@@ -158,6 +199,28 @@ test_convert_to_qcow2_writes_disc_qcow2() {
   convert_to_qcow2
 
   assert_eq "${qemu_args}" "convert -f raw -O qcow2 2026-06-18-raspios-trixie-arm64-lite.img disc.qcow2"
+}
+
+test_download_source_image_verifies_pinned_checksum_before_extracting() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local calls=()
+  local checksum_input=""
+  rm() { calls+=("rm:$*"); }
+  wget() { calls+=("wget:$*"); }
+  sha256sum() {
+    calls+=("sha256sum:$*")
+    checksum_input="$(cat)"
+  }
+  xz() { calls+=("xz:$*"); }
+  log_step() { :; }
+
+  download_source_image
+
+  assert_eq "${IMG_SHA256}" "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3"
+  assert_eq "${calls[*]}" "rm:-f 2026-06-18-raspios-trixie-arm64-lite.img.xz 2026-06-18-raspios-trixie-arm64-lite.img disc.qcow2 disk.qcow2 wget:-q -O 2026-06-18-raspios-trixie-arm64-lite.img.xz https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz sha256sum:-c - xz:-d 2026-06-18-raspios-trixie-arm64-lite.img.xz"
+  assert_eq "${checksum_input}" "acff736ca7945e3b305f07cda4abdb870910e12634991da69783611756e381b3  2026-06-18-raspios-trixie-arm64-lite.img.xz"
 }
 
 test_build_containerdisk_image_pushes_with_repository_dockerfile() {
@@ -219,11 +282,29 @@ test_workflow_uses_new_script() {
     || fail "workflow is not using the new script"
 }
 
-test_workflow_validates_pull_requests_without_publishing() {
-  grep -Fq "PUSH_IMAGE: \${{ github.event_name != 'pull_request' }}" "${ROOT_DIR}/.github/workflows/main.yml" \
-    || fail "workflow does not disable publishing on pull_request events"
-  ! grep -Fq 'head.repo.full_name == github.repository' "${ROOT_DIR}/.github/workflows/main.yml" \
-    || fail "workflow still special-cases same-repo pull requests instead of validating all pull requests without publishing"
+test_workflow_separates_pr_validation_from_publish() {
+  local pr_job publish_job
+  pr_job="$(extract_job_block "validate-raspberry-pi-containerdisk-pr")"
+  publish_job="$(extract_job_block "publish-raspberry-pi-containerdisk")"
+
+  assert_contains "${pr_job}" "if: github.event_name == 'pull_request'"
+  assert_contains "${pr_job}" "persist-credentials: false"
+  assert_contains "${pr_job}" "PUSH_IMAGE: 'false'"
+  [[ "${pr_job}" != *"packages: write"* ]] || fail "pull_request validation job still has packages: write"
+  [[ "${pr_job}" != *"GHCR_TOKEN"* ]] || fail "pull_request validation job still exposes GHCR_TOKEN"
+  [[ "${pr_job}" != *"GITHUB_TOKEN"* ]] || fail "pull_request validation job still exposes GITHUB_TOKEN"
+
+  assert_contains "${publish_job}" "if: github.event_name != 'pull_request'"
+  assert_contains "${publish_job}" "packages: write"
+  assert_contains "${publish_job}" "docker/login-action@v3"
+  assert_contains "${publish_job}" "GHCR_TOKEN: \${{ secrets.GITHUB_TOKEN }}"
+}
+
+test_workflow_publish_job_has_single_login_step() {
+  local publish_job login_step_count
+  publish_job="$(extract_job_block "publish-raspberry-pi-containerdisk")"
+  login_step_count="$(printf '%s\n' "${publish_job}" | grep -Fc 'name: Login to GitHub Container Registry' || true)"
+  assert_eq "${login_step_count}" "1"
 }
 
 test_workflow_renames_docker_compose_references() {
@@ -236,6 +317,8 @@ test_readme_documents_new_script() {
     || fail "README does not document the new script"
   grep -Fq 'disc.qcow2' "${ROOT_DIR}/README.md" \
     || fail "README does not document the disc.qcow2 artifact"
+  grep -Fq '/disk/disk.qcow2' "${ROOT_DIR}/README.md" \
+    || fail "README does not document the packaged /disk/disk.qcow2 path"
 }
 
 test_dockerfile_packages_disc_at_kubevirt_path() {
@@ -249,13 +332,17 @@ test_main_stops_before_qcow2_when_unmount_fails
 test_main_prefers_image_tag_override
 test_validate_runtime_inputs_skips_ghcr_credentials_when_push_disabled
 test_validate_runtime_inputs_rejects_invalid_push_image_value
+test_validate_bootstrap_tools_requires_early_commands
+test_validate_host_tools_requires_full_command_set
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir
 test_convert_to_qcow2_writes_disc_qcow2
+test_download_source_image_verifies_pinned_checksum_before_extracting
 test_build_containerdisk_image_pushes_with_repository_dockerfile
 test_build_containerdisk_image_validates_without_publishing_when_push_disabled
 test_source_fails_for_readonly_fixed_source_constants
 test_workflow_uses_new_script
-test_workflow_validates_pull_requests_without_publishing
+test_workflow_separates_pr_validation_from_publish
+test_workflow_publish_job_has_single_login_step
 test_workflow_renames_docker_compose_references
 test_readme_documents_new_script
 test_dockerfile_packages_disc_at_kubevirt_path
