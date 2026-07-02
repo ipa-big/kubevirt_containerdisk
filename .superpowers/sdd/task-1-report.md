@@ -22,3 +22,19 @@ Self-review / Notes:
 - Commit messages include Co-authored-by trailer per instructions.
 
 No further changes made.
+
+Additional fix (addressing review finding):
+- Problem: The script previously preserved caller-set IMG_* variables when sourced, violating the brief's fixed-constant contract.
+- Fix: When sourced or executed the script now forcibly overrides any caller-provided (non-readonly) IMG_URL, IMG_NAME, and IMG_PLATFORM values by unsetting them and assigning readonly constants. If the variables are already readonly (e.g., from a prior source in the same shell), the script leaves them alone to remain safe to re-source.
+
+Covering test file:
+- tests/build-raspios-lite-containerdisk.test.sh
+
+Command run:
+- bash /home/operation/kubevirt_containerdisk/.worktrees/raspberry-pi-containerdisk-build/tests/build-raspios-lite-containerdisk.test.sh
+
+Output:
+- PASS
+
+Associated commit:
+- 89e0b3a10f42bac15fffa6d3551f72a7111fa50c  fix: make fixed constants override caller values while remaining safe to re-source
