@@ -45,7 +45,7 @@ No further actions required unless the CI environment requires additional secret
 
 Fix applied
 -----------
-- Modified `.github/workflows/main.yml` to skip running the image build/push step on pull_request events by adding an explicit condition: `if: github.event_name != 'pull_request'` on the dedicated build step. This prevents CI from attempting GHCR login/push on forked PRs.
+- Modified `.github/workflows/main.yml` to run GHCR login and build only when not a pull_request or when the pull_request head repo matches the repository (same-repo PR). Replaced `if: github.event_name != 'pull_request'` with `if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository` on the Login and Run steps. This preserves CI coverage for same-repo PRs while avoiding GHCR push attempts on forked PRs.
 
 Covering tests and commands run
 ------------------------------
@@ -54,11 +54,22 @@ Covering tests and commands run
 
 - Commands executed:
   - bash /home/operation/kubevirt_containerdisk/.worktrees/raspberry-pi-containerdisk-build/tests/build-raspios-lite-containerdisk.test.sh
+  - grep -n "run: bash ./build-raspios-lite-containerdisk.sh" .github/workflows/main.yml
+  - grep -n "GHCR_USERNAME" README.md
+  - grep -n "GHCR_TOKEN" README.md
+  - grep -n "build-raspios-lite-containerdisk.sh" README.md
 
 - Output:
 
 PASS
+33:        run: bash ./build-raspios-lite-containerdisk.sh
+7:- `GHCR_USERNAME`
+14:export GHCR_USERNAME=your-github-user
+8:- `GHCR_TOKEN`
+15:export GHCR_TOKEN=your-ghcr-token
+3:Use `build-raspios-lite-containerdisk.sh` to build a KubeVirt-ready containerdisk from the fixed Raspberry Pi OS image `2026-06-18-raspios-trixie-arm64-lite.img.xz`.
+16:bash ./build-raspios-lite-containerdisk.sh
 
 Validation notes
 ----------------
-- The change preserves behavior for `push` and `workflow_dispatch` events while avoiding image push attempts during `pull_request` runs. The test suite for this task passed as shown above.
+- The change preserves behavior for push and workflow_dispatch events and restores CI coverage for same-repo pull_request events while avoiding image push attempts during forked pull_request runs.
