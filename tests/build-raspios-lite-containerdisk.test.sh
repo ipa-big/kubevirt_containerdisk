@@ -224,7 +224,21 @@ test_validate_host_tools_requires_full_command_set() {
 
   validate_host_tools
 
-  assert_eq "${commands[*]}" "apt-get awk bash chroot cp docker mount mountpoint sudo umount e2fsck growpart kpartx parted qemu-aarch64-static qemu-img resize2fs sha256sum wget xz"
+  assert_eq "${commands[*]}" "apt-get awk bash chroot cp docker mount mountpoint sudo umount e2fsck growpart kpartx parted qemu-aarch64-static qemu-img qemu-system-aarch64 resize2fs sha256sum timeout wget xz"
+}
+
+test_validate_host_tools_requires_qemu_system_for_smoke_validation() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local commands=()
+  validate_bootstrap_tools() { :; }
+  require_command() { commands+=("$1"); }
+
+  validate_host_tools
+
+  assert_contains "${commands[*]}" "qemu-system-aarch64"
+  assert_contains "${commands[*]}" "timeout"
 }
 
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir() {
@@ -434,6 +448,43 @@ test_dockerfile_packages_disc_at_kubevirt_path() {
   assert_contains "${dockerfile}" 'ADD --chown=107:107 ./disc.qcow2 /disk/disk.qcow2'
 }
 
+test_run_boot_smoke_validation_uses_serial_login_probe() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local boot_smoke_args_file="${ROOT_DIR}/.boot-smoke-args"
+  local qemu_args_file="${ROOT_DIR}/.qemu-args"
+  rm -f "${boot_smoke_args_file}" "${qemu_args_file}"
+
+  timeout() {
+    printf '%s\n' "$*" > "${boot_smoke_args_file}"
+    shift 1
+    "$@"
+  }
+  qemu-system-aarch64() {
+    printf '%s\n' "$*" > "${qemu_args_file}"
+    printf 'Debian GNU/Linux 13 raspberrypi ttyAMA0\nraspberrypi login: \n'
+  }
+  log_step() { :; }
+
+  run_boot_smoke_validation
+
+  assert_contains "$(<"${boot_smoke_args_file}")" "${BOOT_SMOKE_TIMEOUT_SECONDS}"
+  assert_contains "$(<"${qemu_args_file}")" "-M virt"
+  assert_contains "$(<"${qemu_args_file}")" "-cpu cortex-a72"
+  assert_contains "$(<"${qemu_args_file}")" "-serial mon:stdio"
+  assert_contains "$(<"${qemu_args_file}")" "-drive file=disc.qcow2,if=virtio,format=qcow2"
+  rm -f "${boot_smoke_args_file}" "${qemu_args_file}"
+}
+
+test_readme_documents_boot_validation() {
+  local readme
+  readme="$(<"${ROOT_DIR}/README.md")"
+
+  assert_contains "${readme}" "The script runs a lightweight boot smoke validation before publishing."
+  assert_contains "${readme}" "Set \`PUSH_IMAGE=false\` to validate the build without publishing"
+}
+
 test_main_runs_all_stages_in_order
 test_main_stops_before_qcow2_when_unmount_fails
 test_main_prefers_image_tag_override
@@ -457,6 +508,9 @@ test_workflow_publish_job_has_single_login_step
 test_workflow_renames_docker_compose_references
 test_readme_documents_new_script
 test_dockerfile_packages_disc_at_kubevirt_path
+test_validate_host_tools_requires_qemu_system_for_smoke_validation
+test_run_boot_smoke_validation_uses_serial_login_probe
+test_readme_documents_boot_validation
 
 # Appended boot contract regression tests (Task 1)
 

@@ -27,6 +27,7 @@ set_fixed_constant IMG_SHA256 "acff736ca7945e3b305f07cda4abdb870910e12634991da69
 set_fixed_constant IMG_PLATFORM "linux/arm64"
 set_fixed_constant ROOT_MOUNT_DIR "/mnt/rpi_root"
 set_fixed_constant EFI_MOUNT_DIR "${ROOT_MOUNT_DIR}/boot/efi"
+set_fixed_constant BOOT_SMOKE_TIMEOUT_SECONDS "180"
 
 IMAGE_ARCHIVE=""
 IMAGE_FILE=""
@@ -86,7 +87,7 @@ validate_bootstrap_tools() {
 validate_host_tools() {
   local cmd
   validate_bootstrap_tools || return 1
-  for cmd in e2fsck growpart kpartx parted qemu-aarch64-static qemu-img resize2fs sha256sum wget xz; do
+  for cmd in e2fsck growpart kpartx parted qemu-aarch64-static qemu-img qemu-system-aarch64 resize2fs sha256sum timeout wget xz; do
     require_command "${cmd}" || return 1
   done
 }
@@ -241,7 +242,28 @@ run_guest_boot_sanity_checks() {
 
 run_boot_smoke_validation() {
   log_step "Running lightweight boot smoke validation"
-  return 0
+
+  local boot_output=""
+  boot_output="$(
+    timeout "${BOOT_SMOKE_TIMEOUT_SECONDS}" \
+      qemu-system-aarch64 \
+        -M virt \
+        -cpu cortex-a72 \
+        -m 2048 \
+        -nographic \
+        -serial mon:stdio \
+        -drive "file=disc.qcow2,if=virtio,format=qcow2"
+  )" || {
+    printf '%s\n' "${boot_output}" >&2
+    echo "Error: boot smoke validation did not reach a login prompt." >&2
+    return 1
+  }
+
+  if [[ "${boot_output}" != *"login:"* ]]; then
+    printf '%s\n' "${boot_output}" >&2
+    echo "Error: boot smoke validation did not reach a login prompt." >&2
+    return 1
+  fi
 }
 
 unmount_guest_filesystems() {
