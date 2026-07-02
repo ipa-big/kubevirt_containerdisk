@@ -52,8 +52,17 @@ require_command() {
 }
 
 validate_runtime_inputs() {
-  require_env "GHCR_USERNAME"
-  require_env "GHCR_TOKEN"
+  local push_image_status=0
+
+  if should_push_image; then
+    require_env "GHCR_USERNAME"
+    require_env "GHCR_TOKEN"
+  else
+    push_image_status=$?
+    if [[ "${push_image_status}" -ne 1 ]]; then
+      return "${push_image_status}"
+    fi
+  fi
 }
 
 validate_host_tools() {
@@ -65,6 +74,17 @@ validate_host_tools() {
 
 default_image_tag() {
   printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${IMG_NAME}"
+}
+
+should_push_image() {
+  case "${PUSH_IMAGE:-true}" in
+    1|true|TRUE|yes|YES) return 0 ;;
+    0|false|FALSE|no|NO) return 1 ;;
+    *)
+      echo "Error: PUSH_IMAGE must be a boolean value." >&2
+      return 2
+      ;;
+  esac
 }
 
 cleanup() {
@@ -87,7 +107,7 @@ download_source_image() {
   log_step "Downloading fixed Raspberry Pi OS image"
   IMAGE_ARCHIVE="${IMG_NAME}.img.xz"
   IMAGE_FILE="${IMG_NAME}.img"
-  rm -f "${IMAGE_ARCHIVE}" "${IMAGE_FILE}" disc.qcow2
+  rm -f "${IMAGE_ARCHIVE}" "${IMAGE_FILE}" disc.qcow2 disk.qcow2
   wget -q -O "${IMAGE_ARCHIVE}" "${IMG_URL}"
   xz -d "${IMAGE_ARCHIVE}"
 }
@@ -121,8 +141,9 @@ expand_and_map_image() {
 
 mount_guest_filesystems() {
   log_step "Mounting guest filesystems"
-  sudo mkdir -p "${ROOT_MOUNT_DIR}" "${EFI_MOUNT_DIR}"
+  sudo mkdir -p "${ROOT_MOUNT_DIR}"
   sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p2" "${ROOT_MOUNT_DIR}"
+  sudo mkdir -p "${EFI_MOUNT_DIR}"
   sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p1" "${EFI_MOUNT_DIR}"
   sudo cp /usr/bin/qemu-aarch64-static "${ROOT_MOUNT_DIR}/usr/bin/"
   sudo mount --bind /dev "${ROOT_MOUNT_DIR}/dev"
@@ -186,24 +207,35 @@ EOF
 
 unmount_guest_filesystems() {
   log_step "Unmounting guest filesystems"
-  sudo umount "${ROOT_MOUNT_DIR}/dev" || true
-  sudo umount "${ROOT_MOUNT_DIR}/proc" || true
-  sudo umount "${ROOT_MOUNT_DIR}/sys" || true
-  sudo umount "${ROOT_MOUNT_DIR}/run" || true
-  sudo umount "${EFI_MOUNT_DIR}" || true
-  sudo umount "${ROOT_MOUNT_DIR}" || true
+  if mountpoint -q "${ROOT_MOUNT_DIR}/dev"; then sudo umount "${ROOT_MOUNT_DIR}/dev"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/proc"; then sudo umount "${ROOT_MOUNT_DIR}/proc"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/sys"; then sudo umount "${ROOT_MOUNT_DIR}/sys"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/run"; then sudo umount "${ROOT_MOUNT_DIR}/run"; fi
+  if mountpoint -q "${EFI_MOUNT_DIR}"; then sudo umount "${EFI_MOUNT_DIR}"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}"; then sudo umount "${ROOT_MOUNT_DIR}"; fi
 }
 
 convert_to_qcow2() {
   log_step "Converting raw image to qcow2"
-  qemu-img convert -f raw -O qcow2 "${IMAGE_FILE}" disk.qcow2
+  qemu-img convert -f raw -O qcow2 "${IMAGE_FILE}" disc.qcow2
 }
 
 build_containerdisk_image() {
   local image_tag="$1"
-  log_step "Building and pushing containerdisk image"
-  echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
-  docker buildx build --platform "${IMG_PLATFORM}" -f raspios-lite/Dockerfile -t "${image_tag}" --push .
+  local push_image_status=0
+
+  if should_push_image; then
+    log_step "Building and pushing containerdisk image"
+    docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+    docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --push .
+  else
+    push_image_status=$?
+    if [[ "${push_image_status}" -ne 1 ]]; then
+      return "${push_image_status}"
+    fi
+    log_step "Building containerdisk image without publishing"
+    docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --load .
+  fi
 }
 
 main() {
@@ -216,7 +248,7 @@ main() {
   expand_and_map_image
   mount_guest_filesystems
   convert_guest_image
-  unmount_guest_filesystems
+  unmount_guest_filesystems || return 1
   convert_to_qcow2
   build_containerdisk_image "${image_tag}"
   log_step "Image built: ${image_tag}"
