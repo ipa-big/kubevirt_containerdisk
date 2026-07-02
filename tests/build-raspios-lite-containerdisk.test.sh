@@ -100,4 +100,18 @@ test_main_prefers_image_tag_override
 test_convert_to_qcow2_writes_disk_qcow2
 test_source_fails_for_readonly_fixed_source_constants
 
+test_workflow_uses_new_script() {
+  grep -Fq 'run: bash ./build-raspios-lite-containerdisk.sh' "${ROOT_DIR}/.github/workflows/main.yml" \
+    || fail "workflow is not using the new script"
+}
+
+test_readme_documents_new_script() {
+  grep -Fq 'build-raspios-lite-containerdisk.sh' "${ROOT_DIR}/README.md" \
+    || fail "README does not document the new script"
+}
+
+test_workflow_uses_new_script
+
+test_readme_documents_new_script
+
 echo "PASS"
