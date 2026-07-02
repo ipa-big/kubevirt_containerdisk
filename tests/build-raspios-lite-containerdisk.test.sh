@@ -496,7 +496,9 @@ test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab() {
   local chroot_calls=()
   sudo() {
     if [[ "$1" == "chroot" ]]; then
-      chroot_calls+=("$3")
+      # remove 'chroot' and the root-mount-dir arg, capture the invoked command and args
+      shift 2
+      chroot_calls+=("$(printf '%s ' "$@" | sed 's/ $//')")
       return 0
     fi
   }
@@ -504,7 +506,13 @@ test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab() {
 
   run_guest_boot_sanity_checks
 
-  assert_eq "${chroot_calls[*]}" "test test test grep grep"
+  assert_eq "${chroot_calls[0]}" "test -f /boot/grub/grub.cfg"
+  assert_eq "${chroot_calls[1]}" "test -d /boot/efi/EFI"
+  assert_eq "${chroot_calls[2]}" "test -s /etc/fstab"
+  assert_eq "${chroot_calls[3]}" "grep -q GRUB_DISABLE_LINUX_PARTUUID=true /etc/default/grub"
+  assert_contains "${chroot_calls[4]}" "/boot/efi vfat"
+  assert_contains "${chroot_calls[4]}" "/etc/fstab"
+  assert_contains "${chroot_calls[4]}" "^UUID=.*"
 }
 
 
