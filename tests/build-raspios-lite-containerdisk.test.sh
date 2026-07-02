@@ -220,6 +220,7 @@ test_validate_host_tools_requires_full_command_set() {
 
   local commands=()
   require_command() { commands+=("$1"); }
+  require_file() { :; }
   docker() { :; }
 
   validate_host_tools
@@ -234,11 +235,27 @@ test_validate_host_tools_requires_qemu_system_for_smoke_validation() {
   local commands=()
   validate_bootstrap_tools() { :; }
   require_command() { commands+=("$1"); }
+  require_file() { :; }
 
   validate_host_tools
 
   assert_contains "${commands[*]}" "qemu-system-aarch64"
   assert_contains "${commands[*]}" "timeout"
+}
+
+test_validate_host_tools_requires_arm64_uefi_firmware_files() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local files=()
+  validate_bootstrap_tools() { :; }
+  require_command() { :; }
+  require_file() { files+=("$1"); }
+
+  validate_host_tools
+
+  assert_contains "${files[*]}" "/usr/share/AAVMF/AAVMF_CODE.fd"
+  assert_contains "${files[*]}" "/usr/share/AAVMF/AAVMF_VARS.fd"
 }
 
 test_install_host_dependencies_installs_qemu_system_emulator() {
@@ -256,6 +273,7 @@ test_install_host_dependencies_installs_qemu_system_emulator() {
   install_host_dependencies
 
   assert_contains "${apt_get_install_args}" "qemu-system-arm"
+  assert_contains "${apt_get_install_args}" "qemu-efi-aarch64"
 }
 
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir() {
@@ -471,8 +489,16 @@ test_run_boot_smoke_validation_uses_serial_login_probe() {
 
   local boot_smoke_args_file="${ROOT_DIR}/.boot-smoke-args"
   local qemu_args_file="${ROOT_DIR}/.qemu-args"
+  local copy_args_file="${ROOT_DIR}/.boot-smoke-copy-args"
+  local rm_args_file="${ROOT_DIR}/.boot-smoke-rm-args"
   rm -f "${boot_smoke_args_file}" "${qemu_args_file}"
 
+  cp() {
+    printf '%s\n' "$*" > "${copy_args_file}"
+  }
+  rm() {
+    printf '%s\n' "$*" > "${rm_args_file}"
+  }
   timeout() {
     printf '%s\n' "$*" > "${boot_smoke_args_file}"
     shift 1
@@ -491,8 +517,13 @@ test_run_boot_smoke_validation_uses_serial_login_probe() {
   assert_contains "$(<"${qemu_args_file}")" "-M virt"
   assert_contains "$(<"${qemu_args_file}")" "-cpu cortex-a72"
   assert_contains "$(<"${qemu_args_file}")" "-serial mon:stdio"
+  assert_contains "$(<"${qemu_args_file}")" "-snapshot"
+  assert_contains "$(<"${qemu_args_file}")" "-drive if=pflash,format=raw,readonly=on,file=/usr/share/AAVMF/AAVMF_CODE.fd"
+  assert_contains "$(<"${qemu_args_file}")" "-drive if=pflash,format=raw,file=.boot-smoke-aavmf-vars.fd"
   assert_contains "$(<"${qemu_args_file}")" "-drive file=disc.qcow2,if=virtio,format=qcow2"
-  rm -f "${boot_smoke_args_file}" "${qemu_args_file}"
+  assert_eq "$(<"${copy_args_file}")" "/usr/share/AAVMF/AAVMF_VARS.fd .boot-smoke-aavmf-vars.fd"
+  assert_contains "$(<"${rm_args_file}")" ".boot-smoke-aavmf-vars.fd"
+  command rm -f "${boot_smoke_args_file}" "${qemu_args_file}" "${copy_args_file}" "${rm_args_file}"
 }
 
 test_readme_documents_boot_validation() {
@@ -500,6 +531,8 @@ test_readme_documents_boot_validation() {
   readme="$(<"${ROOT_DIR}/README.md")"
 
   assert_contains "${readme}" "The script runs a lightweight boot smoke validation before publishing."
+  assert_contains "${readme}" "Install \`qemu-efi-aarch64\` so the smoke validation can boot with ARM64 UEFI firmware."
+  assert_contains "${readme}" "The smoke validation uses disposable UEFI vars and QEMU snapshot mode, so \`disc.qcow2\` remains pristine for packaging."
   assert_contains "${readme}" "Set \`PUSH_IMAGE=false\` to validate the build without publishing"
 }
 
@@ -527,6 +560,7 @@ test_workflow_renames_docker_compose_references
 test_readme_documents_new_script
 test_dockerfile_packages_disc_at_kubevirt_path
 test_validate_host_tools_requires_qemu_system_for_smoke_validation
+test_validate_host_tools_requires_arm64_uefi_firmware_files
 test_install_host_dependencies_installs_qemu_system_emulator
 test_run_boot_smoke_validation_uses_serial_login_probe
 test_readme_documents_boot_validation

@@ -28,6 +28,9 @@ set_fixed_constant IMG_PLATFORM "linux/arm64"
 set_fixed_constant ROOT_MOUNT_DIR "/mnt/rpi_root"
 set_fixed_constant EFI_MOUNT_DIR "${ROOT_MOUNT_DIR}/boot/efi"
 set_fixed_constant BOOT_SMOKE_TIMEOUT_SECONDS "180"
+set_fixed_constant BOOT_SMOKE_UEFI_CODE_FD "/usr/share/AAVMF/AAVMF_CODE.fd"
+set_fixed_constant BOOT_SMOKE_UEFI_VARS_TEMPLATE_FD "/usr/share/AAVMF/AAVMF_VARS.fd"
+set_fixed_constant BOOT_SMOKE_UEFI_VARS_FD ".boot-smoke-aavmf-vars.fd"
 
 IMAGE_ARCHIVE=""
 IMAGE_FILE=""
@@ -49,6 +52,14 @@ require_command() {
   local cmd_name="$1"
   if ! command -v "${cmd_name}" >/dev/null 2>&1; then
     echo "Error: required command '${cmd_name}' is not available." >&2
+    return 1
+  fi
+}
+
+require_file() {
+  local file_path="$1"
+  if [[ ! -f "${file_path}" ]]; then
+    echo "Error: required file '${file_path}' is not available." >&2
     return 1
   fi
 }
@@ -90,6 +101,8 @@ validate_host_tools() {
   for cmd in e2fsck growpart kpartx parted qemu-aarch64-static qemu-img qemu-system-aarch64 resize2fs sha256sum timeout wget xz; do
     require_command "${cmd}" || return 1
   done
+  require_file "${BOOT_SMOKE_UEFI_CODE_FD}" || return 1
+  require_file "${BOOT_SMOKE_UEFI_VARS_TEMPLATE_FD}" || return 1
 }
 
 default_image_tag() {
@@ -108,6 +121,7 @@ should_push_image() {
 }
 
 cleanup() {
+  rm -f "${BOOT_SMOKE_UEFI_VARS_FD}" || true
   if mountpoint -q "${ROOT_MOUNT_DIR}/dev" 2>/dev/null; then sudo umount "${ROOT_MOUNT_DIR}/dev" || true; fi
   if mountpoint -q "${ROOT_MOUNT_DIR}/proc" 2>/dev/null; then sudo umount "${ROOT_MOUNT_DIR}/proc" || true; fi
   if mountpoint -q "${ROOT_MOUNT_DIR}/sys" 2>/dev/null; then sudo umount "${ROOT_MOUNT_DIR}/sys" || true; fi
@@ -120,7 +134,7 @@ cleanup() {
 install_host_dependencies() {
   log_step "Installing host dependencies"
   sudo apt-get update -qq
-  sudo apt-get install -qq -y cloud-guest-utils dosfstools e2fsprogs kpartx parted qemu-system-arm qemu-user-static qemu-utils wget xz-utils
+  sudo apt-get install -qq -y cloud-guest-utils dosfstools e2fsprogs kpartx parted qemu-efi-aarch64 qemu-system-arm qemu-user-static qemu-utils wget xz-utils
 }
 
 download_source_image() {
@@ -244,7 +258,12 @@ run_boot_smoke_validation() {
   log_step "Running lightweight boot smoke validation"
 
   local boot_output=""
-  boot_output="$(
+  local boot_status=0
+
+  rm -f "${BOOT_SMOKE_UEFI_VARS_FD}"
+  cp "${BOOT_SMOKE_UEFI_VARS_TEMPLATE_FD}" "${BOOT_SMOKE_UEFI_VARS_FD}"
+
+  if boot_output="$(
     timeout "${BOOT_SMOKE_TIMEOUT_SECONDS}" \
       qemu-system-aarch64 \
         -M virt \
@@ -252,14 +271,29 @@ run_boot_smoke_validation() {
         -m 2048 \
         -nographic \
         -serial mon:stdio \
-        -drive "file=disc.qcow2,if=virtio,format=qcow2" || true
-  )"
-
-  if [[ "${boot_output}" != *"login:"* ]]; then
-    printf '%s\n' "${boot_output}" >&2
-    echo "Error: boot smoke validation did not reach a login prompt." >&2
-    return 1
+        -drive "if=pflash,format=raw,readonly=on,file=${BOOT_SMOKE_UEFI_CODE_FD}" \
+        -drive "if=pflash,format=raw,file=${BOOT_SMOKE_UEFI_VARS_FD}" \
+        -snapshot \
+        -drive "file=disc.qcow2,if=virtio,format=qcow2"
+  )"; then
+    boot_status=0
+  else
+    boot_status=$?
   fi
+
+  rm -f "${BOOT_SMOKE_UEFI_VARS_FD}"
+
+  if [[ "${boot_output}" == *"login:"* ]]; then
+    return 0
+  fi
+
+  printf '%s\n' "${boot_output}" >&2
+  if [[ "${boot_status}" -eq 124 ]]; then
+    echo "Error: boot smoke validation timed out before reaching a login prompt." >&2
+  else
+    echo "Error: boot smoke validation did not reach a login prompt." >&2
+  fi
+  return 1
 }
 
 unmount_guest_filesystems() {

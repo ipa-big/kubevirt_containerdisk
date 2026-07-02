@@ -21,6 +21,8 @@ bash ./build-raspios-lite-containerdisk.sh
 To publish to GHCR, export `GHCR_USERNAME` and `GHCR_TOKEN`, then leave `PUSH_IMAGE` unset (or set it to `true`) before running the script.
 
 The script runs a lightweight boot smoke validation before publishing.
+Install `qemu-efi-aarch64` so the smoke validation can boot with ARM64 UEFI firmware.
+The smoke validation uses disposable UEFI vars and QEMU snapshot mode, so `disc.qcow2` remains pristine for packaging.
 
 The script generates `disc.qcow2` and packages it at `/disk/disk.qcow2`, ready to use as a KubeVirt containerdisk.
 
