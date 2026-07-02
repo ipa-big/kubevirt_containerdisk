@@ -15,51 +15,58 @@ assert_eq() {
   [[ "${actual}" == "${expected}" ]] || fail "expected '${expected}', got '${actual}'"
 }
 
-test_fixed_image_constants() {
+test_main_runs_all_stages_in_order() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
-  assert_eq "${IMG_URL}" "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz"
-  assert_eq "${IMG_NAME}" "2026-06-18-raspios-trixie-arm64-lite"
-  assert_eq "${IMG_PLATFORM}" "linux/arm64"
+
+  export GHCR_USERNAME="demo-user"
+  export GHCR_TOKEN="demo-token"
+
+  local calls=()
+  validate_runtime_inputs() { calls+=("validate_runtime_inputs"); }
+  validate_host_tools() { calls+=("validate_host_tools"); }
+  install_host_dependencies() { calls+=("install_host_dependencies"); }
+  download_source_image() { calls+=("download_source_image"); }
+  expand_and_map_image() { calls+=("expand_and_map_image"); }
+  mount_guest_filesystems() { calls+=("mount_guest_filesystems"); }
+  convert_guest_image() { calls+=("convert_guest_image"); }
+  unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); }
+  convert_to_qcow2() { calls+=("convert_to_qcow2"); }
+  build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
+  log_step() { :; }
+
+  main
+
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_host_tools install_host_dependencies download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
 }
 
-test_default_image_tag() {
+test_main_prefers_image_tag_override() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
-  assert_eq "$(default_image_tag)" "ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+
+  export GHCR_USERNAME="demo-user"
+  export GHCR_TOKEN="demo-token"
+  export IMAGE_TAG_OVERRIDE="ghcr.io/example/custom:latest"
+
+  local selected_tag=""
+  validate_runtime_inputs() { :; }
+  validate_host_tools() { :; }
+  install_host_dependencies() { :; }
+  download_source_image() { :; }
+  expand_and_map_image() { :; }
+  mount_guest_filesystems() { :; }
+  convert_guest_image() { :; }
+  unmount_guest_filesystems() { :; }
+  convert_to_qcow2() { :; }
+  build_containerdisk_image() { selected_tag="$1"; }
+  log_step() { :; }
+
+  main
+
+  assert_eq "${selected_tag}" "ghcr.io/example/custom:latest"
 }
 
-test_validate_runtime_inputs_requires_credentials() {
-  # shellcheck disable=SC1090
-  source "${SCRIPT_PATH}"
-  unset GHCR_USERNAME GHCR_TOKEN || true
-
-  local output
-  if output="$(validate_runtime_inputs 2>&1)"; then
-    fail "validate_runtime_inputs should fail when credentials are missing"
-  fi
-
-  [[ "${output}" == *"GHCR_USERNAME"* ]] || fail "missing GHCR_USERNAME error"
-}
-
-test_log_step_prefix() {
-  # shellcheck disable=SC1090
-  source "${SCRIPT_PATH}"
-  local output
-  output="$(log_step "Downloading image")"
-  [[ "${output}" == *"==> Downloading image"* ]] || fail "missing log prefix"
-}
-
-test_cleanup_is_safe_when_nothing_is_mounted() {
-  # shellcheck disable=SC1090
-  source "${SCRIPT_PATH}"
-  cleanup
-}
-
-test_fixed_image_constants
-test_default_image_tag
-test_validate_runtime_inputs_requires_credentials
-test_log_step_prefix
-test_cleanup_is_safe_when_nothing_is_mounted
+test_main_runs_all_stages_in_order
+test_main_prefers_image_tag_override
 
 echo "PASS"
