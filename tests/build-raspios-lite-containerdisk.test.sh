@@ -27,6 +27,13 @@ assert_not_contains() {
   [[ "${haystack}" != *"${needle}"* ]] || fail "expected '${haystack}' to not contain '${needle}'"
 }
 
+line_number_of() {
+  local haystack="$1"
+  local needle="$2"
+
+  printf '%s\n' "${haystack}" | grep -Fn "${needle}" | head -n1 | cut -d: -f1
+}
+
 extract_job_block() {
   local job_name="$1"
 
@@ -366,9 +373,27 @@ test_workflow_restricts_publish_to_trusted_main_pushes() {
   printf '%s\n' "${publish_job}" | grep -Fxq "    if: github.event_name == 'push' && github.ref == 'refs/heads/main'" \
     || fail "publish job is not restricted to trusted main pushes"
   assert_contains "${publish_job}" "packages: write"
+  assert_contains "${publish_job}" "id: image-tag"
   assert_contains "${publish_job}" "docker/login-action@v3"
-  assert_contains "${publish_job}" "GHCR_TOKEN: \${{ secrets.GITHUB_TOKEN }}"
-  assert_contains "${publish_job}" "PUSH_IMAGE: 'true'"
+  assert_contains "${publish_job}" "default_image_tag"
+  assert_contains "${publish_job}" "password: \${{ secrets.GITHUB_TOKEN }}"
+  assert_contains "${publish_job}" "PUSH_IMAGE: 'false'"
+  assert_contains "${publish_job}" 'docker push "${{ steps.image-tag.outputs.value }}"'
+  assert_not_contains "${publish_job}" "GHCR_TOKEN"
+}
+
+test_workflow_publish_job_authenticates_only_after_secret_free_build() {
+  local publish_job build_line login_line push_line
+  publish_job="$(extract_job_block "publish-raspberry-pi-containerdisk")"
+  build_line="$(line_number_of "${publish_job}" "run: bash ./build-raspios-lite-containerdisk.sh")"
+  login_line="$(line_number_of "${publish_job}" "name: Login to GitHub Container Registry")"
+  push_line="$(line_number_of "${publish_job}" 'run: docker push "${{ steps.image-tag.outputs.value }}"')"
+
+  [[ -n "${build_line}" ]] || fail "publish job is missing the secret-free build step"
+  [[ -n "${login_line}" ]] || fail "publish job is missing the registry login step"
+  [[ -n "${push_line}" ]] || fail "publish job is missing the docker push step"
+  [[ "${build_line}" -lt "${login_line}" ]] || fail "publish job authenticates before the secret-free build step"
+  [[ "${login_line}" -lt "${push_line}" ]] || fail "publish job does not push after authenticating"
 }
 
 test_workflow_publish_job_has_single_login_step() {
@@ -421,6 +446,7 @@ test_build_containerdisk_image_validates_without_publishing_when_push_disabled
 test_source_fails_for_readonly_fixed_source_constants
 test_workflow_uses_new_script
 test_workflow_restricts_publish_to_trusted_main_pushes
+test_workflow_publish_job_authenticates_only_after_secret_free_build
 test_workflow_publish_job_has_single_login_step
 test_workflow_renames_docker_compose_references
 test_readme_documents_new_script

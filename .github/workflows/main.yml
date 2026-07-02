@@ -33,16 +33,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Resolve containerdisk image tag
+        id: image-tag
+        shell: bash
+        run: |
+          source ./build-raspios-lite-containerdisk.sh
+          echo "value=$(default_image_tag)" >> "${GITHUB_OUTPUT}"
+      - name: Run dedicated Raspberry Pi containerdisk builder
+        env:
+          IMAGE_TAG_OVERRIDE: ${{ steps.image-tag.outputs.value }}
+          PUSH_IMAGE: 'false'
+        run: bash ./build-raspios-lite-containerdisk.sh
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Run dedicated Raspberry Pi containerdisk builder
-        env:
-          GHCR_USERNAME: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUSH_IMAGE: 'true'
-        run: bash ./build-raspios-lite-containerdisk.sh
+      - name: Push prepared Raspberry Pi containerdisk image
+        run: docker push "${{ steps.image-tag.outputs.value }}"
