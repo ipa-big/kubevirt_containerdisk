@@ -1,50 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if declare -p IMG_URL >/dev/null 2>&1; then
-  if ! declare -p IMG_URL 2>/dev/null | grep -q "declare -r"; then
-    unset IMG_URL || true
-    readonly IMG_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz"
-  fi
-else
-  readonly IMG_URL="https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz"
-fi
+set_fixed_constant() {
+  local name="$1"
+  local value="$2"
+  local declaration
 
-if declare -p IMG_NAME >/dev/null 2>&1; then
-  if ! declare -p IMG_NAME 2>/dev/null | grep -q "declare -r"; then
-    unset IMG_NAME || true
-    readonly IMG_NAME="2026-06-18-raspios-trixie-arm64-lite"
+  if declaration="$(declare -p "${name}" 2>/dev/null)"; then
+    if [[ "${declaration}" == *"declare -r"* ]]; then
+      if [[ "${!name}" != "${value}" ]]; then
+        echo "Error: fixed constant '${name}' is readonly with unexpected value '${!name}'." >&2
+        return 1
+      fi
+      return 0
+    fi
+    unset "${name}" || true
   fi
-else
-  readonly IMG_NAME="2026-06-18-raspios-trixie-arm64-lite"
-fi
 
-if declare -p IMG_PLATFORM >/dev/null 2>&1; then
-  if ! declare -p IMG_PLATFORM 2>/dev/null | grep -q "declare -r"; then
-    unset IMG_PLATFORM || true
-    readonly IMG_PLATFORM="linux/arm64"
-  fi
-else
-  readonly IMG_PLATFORM="linux/arm64"
-fi
+  printf -v "${name}" '%s' "${value}"
+  readonly "${name}"
+}
 
-if declare -p ROOT_MOUNT_DIR >/dev/null 2>&1; then
-  if ! declare -p ROOT_MOUNT_DIR 2>/dev/null | grep -q "declare -r"; then
-    unset ROOT_MOUNT_DIR || true
-    readonly ROOT_MOUNT_DIR="/mnt/rpi_root"
-  fi
-else
-  readonly ROOT_MOUNT_DIR="/mnt/rpi_root"
-fi
-
-if declare -p EFI_MOUNT_DIR >/dev/null 2>&1; then
-  if ! declare -p EFI_MOUNT_DIR 2>/dev/null | grep -q "declare -r"; then
-    unset EFI_MOUNT_DIR || true
-    readonly EFI_MOUNT_DIR="${ROOT_MOUNT_DIR}/boot/efi"
-  fi
-else
-  readonly EFI_MOUNT_DIR="${ROOT_MOUNT_DIR}/boot/efi"
-fi
+set_fixed_constant IMG_URL "https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2026-06-19/2026-06-18-raspios-trixie-arm64-lite.img.xz"
+set_fixed_constant IMG_NAME "2026-06-18-raspios-trixie-arm64-lite"
+set_fixed_constant IMG_PLATFORM "linux/arm64"
+set_fixed_constant ROOT_MOUNT_DIR "/mnt/rpi_root"
+set_fixed_constant EFI_MOUNT_DIR "${ROOT_MOUNT_DIR}/boot/efi"
 
 IMAGE_ARCHIVE=""
 IMAGE_FILE=""
@@ -215,7 +196,7 @@ unmount_guest_filesystems() {
 
 convert_to_qcow2() {
   log_step "Converting raw image to qcow2"
-  qemu-img convert -f raw -O qcow2 "${IMAGE_FILE}" disc.qcow2
+  qemu-img convert -f raw -O qcow2 "${IMAGE_FILE}" disk.qcow2
 }
 
 build_containerdisk_image() {

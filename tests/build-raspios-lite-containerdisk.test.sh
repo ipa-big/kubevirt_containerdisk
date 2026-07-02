@@ -66,7 +66,38 @@ test_main_prefers_image_tag_override() {
   assert_eq "${selected_tag}" "ghcr.io/example/custom:latest"
 }
 
+test_convert_to_qcow2_writes_disk_qcow2() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  IMAGE_FILE="2026-06-18-raspios-trixie-arm64-lite.img"
+
+  local qemu_args=""
+  qemu-img() { qemu_args="$*"; }
+  log_step() { :; }
+
+  convert_to_qcow2
+
+  assert_eq "${qemu_args}" "convert -f raw -O qcow2 2026-06-18-raspios-trixie-arm64-lite.img disk.qcow2"
+}
+
+test_source_fails_for_readonly_fixed_source_constants() {
+  local output status
+  if output="$(
+    bash -lc 'readonly IMG_URL="https://example.invalid/bad.img.xz"; source "$1"' _ "${SCRIPT_PATH}" 2>&1
+  )"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  [[ "${status}" -ne 0 ]] || fail "expected sourcing to fail when IMG_URL is readonly"
+  [[ "${output}" == *"IMG_URL"* ]] || fail "expected failure output to mention IMG_URL, got: ${output}"
+}
+
 test_main_runs_all_stages_in_order
 test_main_prefers_image_tag_override
+test_convert_to_qcow2_writes_disk_qcow2
+test_source_fails_for_readonly_fixed_source_constants
 
 echo "PASS"
