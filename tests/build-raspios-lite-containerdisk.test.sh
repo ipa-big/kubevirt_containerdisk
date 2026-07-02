@@ -241,6 +241,23 @@ test_validate_host_tools_requires_qemu_system_for_smoke_validation() {
   assert_contains "${commands[*]}" "timeout"
 }
 
+test_install_host_dependencies_installs_qemu_system_emulator() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  local apt_get_install_args=""
+  sudo() {
+    if [[ "${1:-}" == "apt-get" && "${2:-}" == "install" ]]; then
+      apt_get_install_args="$*"
+    fi
+  }
+  log_step() { :; }
+
+  install_host_dependencies
+
+  assert_contains "${apt_get_install_args}" "qemu-system-arm"
+}
+
 test_mount_guest_filesystems_mounts_root_before_creating_efi_dir() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
@@ -460,6 +477,7 @@ test_run_boot_smoke_validation_uses_serial_login_probe() {
     printf '%s\n' "$*" > "${boot_smoke_args_file}"
     shift 1
     "$@"
+    return 124
   }
   qemu-system-aarch64() {
     printf '%s\n' "$*" > "${qemu_args_file}"
@@ -509,6 +527,7 @@ test_workflow_renames_docker_compose_references
 test_readme_documents_new_script
 test_dockerfile_packages_disc_at_kubevirt_path
 test_validate_host_tools_requires_qemu_system_for_smoke_validation
+test_install_host_dependencies_installs_qemu_system_emulator
 test_run_boot_smoke_validation_uses_serial_login_probe
 test_readme_documents_boot_validation
 

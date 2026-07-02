@@ -120,7 +120,7 @@ cleanup() {
 install_host_dependencies() {
   log_step "Installing host dependencies"
   sudo apt-get update -qq
-  sudo apt-get install -qq -y cloud-guest-utils dosfstools e2fsprogs kpartx parted qemu-user-static qemu-utils wget xz-utils
+  sudo apt-get install -qq -y cloud-guest-utils dosfstools e2fsprogs kpartx parted qemu-system-arm qemu-user-static qemu-utils wget xz-utils
 }
 
 download_source_image() {
@@ -252,12 +252,8 @@ run_boot_smoke_validation() {
         -m 2048 \
         -nographic \
         -serial mon:stdio \
-        -drive "file=disc.qcow2,if=virtio,format=qcow2"
-  )" || {
-    printf '%s\n' "${boot_output}" >&2
-    echo "Error: boot smoke validation did not reach a login prompt." >&2
-    return 1
-  }
+        -drive "file=disc.qcow2,if=virtio,format=qcow2" || true
+  )"
 
   if [[ "${boot_output}" != *"login:"* ]]; then
     printf '%s\n' "${boot_output}" >&2
