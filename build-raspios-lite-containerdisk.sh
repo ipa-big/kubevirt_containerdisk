@@ -116,8 +116,7 @@ main() {
   return 1
 }
 
-trap cleanup EXIT
-
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  trap cleanup EXIT
   main "$@"
 fi
