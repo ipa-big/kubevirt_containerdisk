@@ -207,7 +207,7 @@ update-initramfs -u -k all
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
 
-sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait"/' /etc/default/grub
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait acpi=force no_timer_check"/' /etc/default/grub
 
 if grep -q '^GRUB_DISABLE_LINUX_PARTUUID=' /etc/default/grub; then
   sed -i 's/^GRUB_DISABLE_LINUX_PARTUUID=.*/GRUB_DISABLE_LINUX_PARTUUID=true/' /etc/default/grub
