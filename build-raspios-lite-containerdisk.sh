@@ -254,6 +254,66 @@ run_guest_boot_sanity_checks() {
   sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_net$' /etc/initramfs-tools/modules
 }
 
+apply_acpi_fix() {
+  log_step "Applying ACPI fix to guest filesystem"
+
+  local boot_dir="${EFI_MOUNT_DIR}"
+
+  # Modify cmdline.txt
+  local cmdline_file="${boot_dir}/cmdline.txt"
+  local fallback_file="${boot_dir}/cmdline_acpi_fallback.txt"
+
+  if [[ -f "${cmdline_file}" ]]; then
+    local original_cmdline
+    original_cmdline=$(cat "${cmdline_file}")
+
+    # Remove old console parameters
+    local modified_cmdline
+    modified_cmdline=$(echo "${original_cmdline}" | sed 's/console=serial0,115200//g' | sed 's/console=tty1//g')
+
+    # Add console=ttyAMA0,115200 at the beginning
+    if [[ "${modified_cmdline}" != *"console=ttyAMA0,115200"* ]]; then
+      modified_cmdline="console=ttyAMA0,115200 ${modified_cmdline}"
+    fi
+
+    # Add acpi=force no_timer_check if not already present
+    if [[ "${modified_cmdline}" != *"acpi=force"* ]]; then
+      modified_cmdline="${modified_cmdline} acpi=force"
+    fi
+
+    if [[ "${modified_cmdline}" != *"no_timer_check"* ]]; then
+      modified_cmdline="${modified_cmdline} no_timer_check"
+    fi
+
+    # Trim multiple spaces to single space
+    modified_cmdline=$(echo "${modified_cmdline}" | tr -s ' ')
+
+    # Write modified cmdline
+    echo "${modified_cmdline}" > "${cmdline_file}"
+
+    # Create fallback cmdline with acpi=ht
+    local fallback_cmdline
+    fallback_cmdline=$(echo "${modified_cmdline}" | sed 's/acpi=force/acpi=ht/')
+    echo "${fallback_cmdline}" > "${fallback_file}"
+
+    log_step "cmdline.txt modified with ACPI support"
+    log_step "Fallback cmdline created at cmdline_acpi_fallback.txt"
+  else
+    echo "Warning: cmdline.txt not found at ${cmdline_file}" >&2
+  fi
+
+  # Modify config.txt to disable graphics overlay
+  local config_file="${boot_dir}/config.txt"
+
+  if [[ -f "${config_file}" ]]; then
+    cp "${config_file}" "${config_file}.bak"
+    sed -i 's/^dtoverlay=vc4-kms-v3d/#dtoverlay=vc4-kms-v3d/' "${config_file}"
+    log_step "config.txt modified to disable vc4-kms-v3d overlay"
+  else
+    echo "Warning: config.txt not found at ${config_file}" >&2
+  fi
+}
+
 run_boot_smoke_validation() {
   log_step "Running lightweight boot smoke validation"
 
@@ -341,6 +401,7 @@ main() {
   mount_guest_filesystems
   convert_guest_image
   run_guest_boot_sanity_checks
+  apply_acpi_fix
   unmount_guest_filesystems || return 1
   convert_to_qcow2
   run_boot_smoke_validation
