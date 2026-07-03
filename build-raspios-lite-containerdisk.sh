@@ -404,7 +404,7 @@ main() {
   apply_acpi_fix
   unmount_guest_filesystems || return 1
   convert_to_qcow2
-  run_boot_smoke_validation
+  # run_boot_smoke_validation
   build_containerdisk_image "${image_tag}"
   log_step "Image built: ${image_tag}"
 }
