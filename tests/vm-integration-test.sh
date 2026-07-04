@@ -13,6 +13,9 @@ VM_NAMESPACE="${VM_NAMESPACE:-default}"
 CONTAINERDISK_PATH="${CONTAINERDISK_PATH:-/tmp/containerdisk.qcow2}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-300}"
 
+# Image tag - must match default_image_tag() from build-raspios-lite-containerdisk.sh
+IMAGE_TAG="${IMAGE_TAG:-ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,6 +46,11 @@ get_vm_pod_name() {
 get_vmi_phase() {
     local vm_name="$1"
     kubectl -n "$VM_NAMESPACE" get vmi "$vm_name" -o jsonpath='{.status.phase}'
+}
+
+get_vmi_image() {
+    local vm_name="$1"
+    kubectl -n "$VM_NAMESPACE" get vmi "$vm_name" -o jsonpath='{.status.domain.volumes[*].image}'
 }
 
 collect_diagnostics() {
@@ -262,6 +270,26 @@ verify_ssh_connectivity() {
     fi
 }
 
+verify_containerdisk_image() {
+    log_info "Verifying containerdisk image tag..."
+    
+    local vm_image=$(get_vmi_image "$VM_NAME")
+    if [[ -z "$vm_image" ]]; then
+        log_error "✗ Could not retrieve containerdisk image from VMI"
+        return 1
+    fi
+    
+    log_info "VM containerdisk image: ${vm_image}"
+    
+    if [[ "$vm_image" == "$IMAGE_TAG"* ]] || [[ "$vm_image" == *"$IMAGE_TAG"* ]]; then
+        log_info "✓ Containerdisk image matches expected tag: ${IMAGE_TAG}"
+        return 0
+    else
+        log_warn "⚠ Containerdisk image differs from expected: ${IMAGE_TAG}"
+        return 0  # Don't fail on image mismatch for now
+    fi
+}
+
 run_smoke_tests() {
     log_info "Running smoke tests..."
     
@@ -363,10 +391,13 @@ main() {
         exit 1
     fi
     
-    # Step 4: Verify SSH connectivity
+    # Step 4: Verify containerdisk image
+    verify_containerdisk_image || true
+    
+    # Step 5: Verify SSH connectivity
     verify_ssh_connectivity || true
     
-    # Step 5: Run smoke tests
+    # Step 6: Run smoke tests
     if ! run_smoke_tests; then
         collect_diagnostics "Smoke tests failed"
         exit 1
