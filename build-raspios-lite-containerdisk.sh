@@ -442,6 +442,8 @@ set_fixed_constant BOOKWORM_IMG_URL "https://downloads.raspberrypi.com/raspios_o
 set_fixed_constant BOOKWORM_IMG_NAME "2026-06-18-raspios-bookworm-arm64-lite"
 set_fixed_constant BOOKWORM_IMG_SHA256 "placeholder"  # Update when image is available
 set_fixed_constant BOOKWORM_IMG_PLATFORM "linux/arm64"
+set_fixed_constant BOOKWORM_ROOT_MOUNT_DIR "/mnt/bookworm_root"
+set_fixed_constant BOOKWORM_EFI_MOUNT_DIR "${BOOKWORM_ROOT_MOUNT_DIR}/boot/efi"
 
 build_bookworm_containerdisk() {
   local image_tag="${IMAGE_TAG_OVERRIDE:-$(printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${BOOKWORM_IMG_NAME}")}"
@@ -493,16 +495,16 @@ expand_and_map_image_bookworm() {
 
 mount_guest_filesystems_bookworm() {
   log_step "Mounting guest filesystems"
-  sudo mkdir -p "${ROOT_MOUNT_DIR}"
-  sudo mount "${ROOT_DEV_BOOKWORM}" "${ROOT_MOUNT_DIR}"
-  sudo mkdir -p "${ROOT_MOUNT_DIR}/boot/efi"
-  sudo mount "${BOOT_DEV_BOOKWORM}" "${ROOT_MOUNT_DIR}/boot/efi"
-  sudo cp /usr/bin/qemu-aarch64-static "${ROOT_MOUNT_DIR}/usr/bin/"
+  sudo mkdir -p "${BOOKWORM_ROOT_MOUNT_DIR}"
+  sudo mount "${ROOT_DEV_BOOKWORM}" "${BOOKWORM_ROOT_MOUNT_DIR}"
+  sudo mkdir -p "${BOOKWORM_EFI_MOUNT_DIR}"
+  sudo mount "${BOOT_DEV_BOOKWORM}" "${BOOKWORM_EFI_MOUNT_DIR}"
+  sudo cp /usr/bin/qemu-aarch64-static "${BOOKWORM_ROOT_MOUNT_DIR}/usr/bin/"
 }
 
 convert_guest_image_bookworm() {
   log_step "Converting guest image"
-  sudo chroot "${ROOT_MOUNT_DIR}" /bin/bash -eux <<'EOF'
+  sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" /bin/bash -eux <<'EOF'
 apt-get update -qq
 apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server cloud-init
 systemctl enable ssh
@@ -588,12 +590,12 @@ run_guest_boot_sanity_checks_bookworm() {
 
 unmount_guest_filesystems_bookworm() {
   log_step "Unmounting guest filesystems"
-  if mountpoint -q "${ROOT_MOUNT_DIR}/dev"; then sudo umount "${ROOT_MOUNT_DIR}/dev"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/proc"; then sudo umount "${ROOT_MOUNT_DIR}/proc"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/sys"; then sudo umount "${ROOT_MOUNT_DIR}/sys"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/run"; then sudo umount "${ROOT_MOUNT_DIR}/run"; fi
-  if mountpoint -q "${EFI_MOUNT_DIR}"; then sudo umount "${EFI_MOUNT_DIR}"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}"; then sudo umount "${ROOT_MOUNT_DIR}"; fi
+  if mountpoint -q "${BOOKWORM_ROOT_MOUNT_DIR}/dev"; then sudo umount "${BOOKWORM_ROOT_MOUNT_DIR}/dev"; fi
+  if mountpoint -q "${BOOKWORM_ROOT_MOUNT_DIR}/proc"; then sudo umount "${BOOKWORM_ROOT_MOUNT_DIR}/proc"; fi
+  if mountpoint -q "${BOOKWORM_ROOT_MOUNT_DIR}/sys"; then sudo umount "${BOOKWORM_ROOT_MOUNT_DIR}/sys"; fi
+  if mountpoint -q "${BOOKWORM_ROOT_MOUNT_DIR}/run"; then sudo umount "${BOOKWORM_ROOT_MOUNT_DIR}/run"; fi
+  if mountpoint -q "${BOOKWORM_EFI_MOUNT_DIR}"; then sudo umount "${BOOKWORM_EFI_MOUNT_DIR}"; fi
+  if mountpoint -q "${BOOKWORM_ROOT_MOUNT_DIR}"; then sudo umount "${BOOKWORM_ROOT_MOUNT_DIR}"; fi
   sudo kpartx -dv "${IMG_FILE_BOOKWORM}"
 }
 
