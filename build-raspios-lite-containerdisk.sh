@@ -471,7 +471,7 @@ download_source_image_bookworm() {
 
 expand_and_map_image_bookworm() {
   log_step "Expanding and mapping image"
-  xz -d "${IMG_ARCHIVE_BOOKWORM}"
+  xz -df "${IMG_ARCHIVE_BOOKWORM}"
   IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
   sudo kpartx -av "${IMG_FILE_BOOKWORM}"
