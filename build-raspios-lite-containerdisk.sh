@@ -475,6 +475,8 @@ expand_and_map_image_bookworm() {
   IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
   sudo kpartx -av "${IMG_FILE_BOOKWORM}"
+  # Wait for device nodes to be created
+  sleep 2
   # Rescan loop device to recognize new size
   sudo partprobe /dev/loop0 || true
   sleep 1
