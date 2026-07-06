@@ -466,7 +466,7 @@ download_source_image_bookworm() {
   log_step "Downloading source image from ${BOOKWORM_IMG_URL}"
   IMG_ARCHIVE_BOOKWORM="${BOOKWORM_IMG_NAME}.img.xz"
   wget -q "${BOOKWORM_IMG_URL}"
-  mv *.xz "${IMG_ARCHIVE_BOOKWORM}"
+  mv *.xz "${IMG_ARCHIVE_BOOKWORM}" || true
 }
 
 expand_and_map_image_bookworm() {
@@ -475,7 +475,10 @@ expand_and_map_image_bookworm() {
   IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
   sudo kpartx -av "${IMG_FILE_BOOKWORM}"
-  sudo growpart /dev/loop0 2
+  # Rescan loop device to recognize new size
+  sudo partprobe /dev/loop0 || true
+  sleep 1
+  sudo growpart /dev/loop0 2 || true
   sudo kpartx -u "${IMG_FILE_BOOKWORM}"
   sudo parted /dev/loop0 set 1 esp on
   sudo e2fsck -fp /dev/mapper/loop0p2 || sudo e2fsck -fy /dev/mapper/loop0p2
