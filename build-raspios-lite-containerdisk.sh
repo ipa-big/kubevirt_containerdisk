@@ -212,10 +212,11 @@ convert_guest_image() {
 apt-get update -qq
 apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server cloud-init
 systemctl enable ssh
-systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
+# systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
 
 # Create user with password 'password' and enable password authentication
 useradd -m -s /bin/bash -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
+usermod -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' pi
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
