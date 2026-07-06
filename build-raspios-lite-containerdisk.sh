@@ -214,8 +214,8 @@ apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 
 systemctl enable ssh
 systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
 
-# Create pi user with password 'raspberry' and enable password authentication
-useradd -m -s /bin/bash -p '$6$92aWRGRRk3LXQCt7$S.50viVL85eKoqZkEIS4/NrA2f/RxJe1jeWSN7dvZ9nYaizJOVHGb3Dk4Wkfqajm722SWULWxG81dugPxNpVx/' pi
+# Create user with password 'password' and enable password authentication
+useradd -m -s /bin/bash -p '$6$fVoRvfu81dhFlI8d$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
