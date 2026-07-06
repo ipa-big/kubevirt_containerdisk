@@ -81,9 +81,28 @@ build_containerdisk() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 create_vm() {
-    # Create a VM using the containerdisk
+    # Create a VM using the containerdisk with physical-net network
     # Returns: 0 on success, 1 on failure
     log_info "Creating VM manifest..."
+    
+    # Create NetworkAttachmentDefinition for physical-net if it doesn't exist
+    local net_def_name="physical-net"
+    if ! kubectl get net-attach-def "${net_def_name}" -n "${NAMESPACE}" > /dev/null 2>&1; then
+        log_info "Creating NetworkAttachmentDefinition for physical-net..."
+        kubectl get net-attach-def physical-bridge-network -n kubevirt -o yaml | \
+            sed 's/namespace: kubevirt/namespace: default/' | \
+            sed 's/name: physical-bridge-network/name: physical-net/' | \
+            kubectl apply -f - 2>/dev/null || true
+        
+        # Wait for the network to be created
+        sleep 2
+        
+        if ! kubectl get net-attach-def "${net_def_name}" -n "${NAMESPACE}" > /dev/null 2>&1; then
+            log_fail "Failed to create NetworkAttachmentDefinition ${net_def_name}"
+            return 1
+        fi
+        log_pass "NetworkAttachmentDefinition ${net_def_name} created"
+    fi
     
     cat > /tmp/test-vm.yaml <<EOF
 apiVersion: kubevirt.io/v1
@@ -119,15 +138,17 @@ spec:
               disk:
                 bus: virtio
           interfaces:
-            - name: default
+            - name: physical-net
               bridge: {}
       networks:
-        - name: default
-          pod: {}
+        - name: physical-net
+          multus:
+            networkName: physical-net
       volumes:
         - name: containerdisk
           containerDisk:
             image: ${IMAGE}
+            imagePullPolicy: Always
         - name: cloudinit
           cloudInitNoCloud:
             userData: |

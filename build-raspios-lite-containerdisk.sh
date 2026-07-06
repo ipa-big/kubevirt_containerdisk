@@ -68,8 +68,22 @@ validate_runtime_inputs() {
   local push_image_status=0
 
   if should_push_image; then
-    require_env "GHCR_USERNAME" || return 1
-    require_env "GHCR_TOKEN" || return 1
+    # Check if already logged in to GHCR
+    if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
+      log_step "Using existing GHCR login"
+      # Extract username from docker config if GHCR_USERNAME not set
+      if [[ -z "${GHCR_USERNAME:-}" ]]; then
+        GHCR_USERNAME=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f1)
+        readonly GHCR_USERNAME
+      fi
+      if [[ -z "${GHCR_TOKEN:-}" ]]; then
+        GHCR_TOKEN=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f2-)
+        readonly GHCR_TOKEN
+      fi
+    else
+      require_env "GHCR_USERNAME" || return 1
+      require_env "GHCR_TOKEN" || return 1
+    fi
   else
     push_image_status=$?
     if [[ "${push_image_status}" -ne 1 ]]; then
@@ -196,18 +210,28 @@ convert_guest_image() {
 
   sudo chroot "${ROOT_MOUNT_DIR}" /bin/bash -eux <<EOF
 apt-get update -qq
-apt-get install -qq -y linux-image-arm64 grub-efi-arm64
+apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64
+
+# Remove Raspberry Pi kernel packages and their files
+apt-get remove -y --purge linux-image-6.18.34+rpt-rpi-v8 linux-image-rpi-v8 linux-image-rpi-2712 || true
+apt-get autoremove -y --purge || true
+
+# Remove any remaining RPi kernel files from /boot
+rm -f /boot/vmlinuz-6.18.34+rpt-rpi-2712 /boot/vmlinuz-6.18.34+rpt-rpi-v8
+rm -f /boot/initrd.img-6.18.34+rpt-rpi-2712 /boot/initrd.img-6.18.34+rpt-rpi-v8
+rm -rf /boot/firmware/initramfs_* /boot/firmware/vmlinuz*
 
 grep -qxF 'virtio' /etc/initramfs-tools/modules || echo 'virtio' >> /etc/initramfs-tools/modules
 grep -qxF 'virtio_blk' /etc/initramfs-tools/modules || echo 'virtio_blk' >> /etc/initramfs-tools/modules
 grep -qxF 'virtio_pci' /etc/initramfs-tools/modules || echo 'virtio_pci' >> /etc/initramfs-tools/modules
 grep -qxF 'virtio_net' /etc/initramfs-tools/modules || echo 'virtio_net' >> /etc/initramfs-tools/modules
+# Update initramfs for all installed kernels (should be just the generic one)
 update-initramfs -u -k all
 
 grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
 update-grub
 
-sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait acpi=force no_timer_check"/' /etc/default/grub
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait"/' /etc/default/grub
 
 if grep -q '^GRUB_DISABLE_LINUX_PARTUUID=' /etc/default/grub; then
   sed -i 's/^GRUB_DISABLE_LINUX_PARTUUID=.*/GRUB_DISABLE_LINUX_PARTUUID=true/' /etc/default/grub
@@ -252,6 +276,8 @@ run_guest_boot_sanity_checks() {
   sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_blk$' /etc/initramfs-tools/modules
   sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_pci$' /etc/initramfs-tools/modules
   sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_net$' /etc/initramfs-tools/modules
+  # Verify no RPi kernel packages are installed
+  sudo chroot "${ROOT_MOUNT_DIR}" apt list --installed 2>/dev/null | grep -qE 'linux-image-(6\.18\.34\+rpt-rpi-v8|linux-image-rpi-v8)' && exit 1 || true
 }
 
 apply_acpi_fix() {
@@ -284,14 +310,8 @@ apply_acpi_fix() {
     modified_cmdline="console=ttyAMA0,115200 ${modified_cmdline}"
   fi
 
-  # Add acpi=force no_timer_check if not already present
-  if [[ "${modified_cmdline}" != *"acpi=force"* ]]; then
-    modified_cmdline="${modified_cmdline} acpi=force"
-  fi
-
-  if [[ "${modified_cmdline}" != *"no_timer_check"* ]]; then
-    modified_cmdline="${modified_cmdline} no_timer_check"
-  fi
+  # Remove resize parameter if present
+  modified_cmdline=$(echo "${modified_cmdline}" | sed 's/ resize//g')
 
   # Trim multiple spaces to single space
   modified_cmdline=$(echo "${modified_cmdline}" | tr -s ' ')
@@ -299,10 +319,7 @@ apply_acpi_fix() {
   # Write modified cmdline using sudo tee
   echo "${modified_cmdline}" | sudo tee "${cmdline_file}" > /dev/null
 
-  # Create fallback cmdline with acpi=ht
-  local fallback_cmdline
-  fallback_cmdline=$(echo "${modified_cmdline}" | sed 's/acpi=force/acpi=ht/')
-  echo "${fallback_cmdline}" | sudo tee "${fallback_file}" > /dev/null
+  log_step "cmdline.txt modified for KubeVirt UEFI compatibility"
 
   log_step "cmdline.txt modified with ACPI support"
   log_step "Fallback cmdline created at cmdline_acpi_fallback.txt"
@@ -378,17 +395,15 @@ convert_to_qcow2() {
 
 build_containerdisk_image() {
   local image_tag="$1"
-  local push_image_status=0
 
   if should_push_image; then
     log_step "Building and pushing containerdisk image"
-    docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+    # Check if already logged in to GHCR
+    if ! docker info 2>&1 | grep -q "ghcr.io"; then
+      docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+    fi
     docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --push .
   else
-    push_image_status=$?
-    if [[ "${push_image_status}" -ne 1 ]]; then
-      return "${push_image_status}"
-    fi
     log_step "Building containerdisk image without publishing"
     docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --load .
   fi
