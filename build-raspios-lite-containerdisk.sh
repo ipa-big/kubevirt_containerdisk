@@ -210,7 +210,7 @@ convert_guest_image() {
 
   sudo chroot "${ROOT_MOUNT_DIR}" /bin/bash -eux <<EOF
 apt-get update -qq
-apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server
+apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server cloud-init
 
 # Remove Raspberry Pi kernel packages and their files
 apt-get remove -y --purge linux-image-6.18.34+rpt-rpi-v8 linux-image-rpi-v8 linux-image-rpi-2712 || true
