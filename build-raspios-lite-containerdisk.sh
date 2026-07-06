@@ -478,9 +478,9 @@ expand_and_map_image_bookworm() {
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
   local kpartx_output
   kpartx_output=$(sudo kpartx -av "${IMG_FILE_BOOKWORM}")
-  # Extract device names from kpartx output
-  BOOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p1' | awk '{print $3}')
-  ROOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p2' | awk '{print $3}')
+  # Extract device names from kpartx output (format: "add map loopNpX (252:XX): ...")
+  BOOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p1' | awk '{print "/dev/mapper/" $3}')
+  ROOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p2' | awk '{print "/dev/mapper/" $3}')
   # Wait for device nodes to be created
   sleep 2
   # Rescan loop device to recognize new size
