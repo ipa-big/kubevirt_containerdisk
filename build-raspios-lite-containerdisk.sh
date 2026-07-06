@@ -440,32 +440,171 @@ main() {
 # Bookworm oldstable build
 set_fixed_constant BOOKWORM_IMG_URL "https://downloads.raspberrypi.com/raspios_oldstable_lite_arm64/images/raspios_oldstable_lite_arm64-2026-06-19/2026-06-18-raspios-bookworm-arm64-lite.img.xz"
 set_fixed_constant BOOKWORM_IMG_NAME "2026-06-18-raspios-bookworm-arm64-lite"
+set_fixed_constant BOOKWORM_IMG_SHA256 "placeholder"  # Update when image is available
+set_fixed_constant BOOKWORM_IMG_PLATFORM "linux/arm64"
 
 build_bookworm_containerdisk() {
   local image_tag="${IMAGE_TAG_OVERRIDE:-$(printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${BOOKWORM_IMG_NAME}")}"
-
-  # Temporarily unset readonly variables to override
-  unset IMG_URL IMG_NAME IMG_PLATFORM 2>/dev/null || true
-  
-  export IMG_URL="${BOOKWORM_IMG_URL}"
-  export IMG_NAME="${BOOKWORM_IMG_NAME}"
-  export IMG_PLATFORM="linux/arm64"
 
   log_step "Building containerdisk image from ${BOOKWORM_IMG_NAME}"
   validate_bootstrap_tools
   install_host_dependencies
   validate_host_tools
-  download_source_image
-  expand_and_map_image
-  mount_guest_filesystems
-  convert_guest_image
-  run_guest_boot_sanity_checks
-  apply_acpi_fix
-  unmount_guest_filesystems || return 1
-  convert_to_qcow2
+  download_source_image_bookworm
+  expand_and_map_image_bookworm
+  mount_guest_filesystems_bookworm
+  convert_guest_image_bookworm
+  run_guest_boot_sanity_checks_bookworm
+  unmount_guest_filesystems_bookworm || return 1
+  convert_to_qcow2_bookworm
   # run_boot_smoke_validation
-  build_containerdisk_image "${image_tag}"
+  build_containerdisk_image_bookworm "${image_tag}"
   log_step "Image built: ${image_tag}"
+}
+
+download_source_image_bookworm() {
+  log_step "Downloading source image from ${BOOKWORM_IMG_URL}"
+  IMG_ARCHIVE_BOOKWORM="${BOOKWORM_IMG_NAME}.img.xz"
+  wget -q "${BOOKWORM_IMG_URL}"
+  mv *.xz "${IMG_ARCHIVE_BOOKWORM}"
+}
+
+expand_and_map_image_bookworm() {
+  log_step "Expanding and mapping image"
+  xz -d "${IMG_ARCHIVE_BOOKWORM}"
+  IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
+  qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
+  sudo kpartx -av "${IMG_FILE_BOOKWORM}"
+  sudo growpart /dev/loop0 2
+  sudo kpartx -u "${IMG_FILE_BOOKWORM}"
+  sudo parted /dev/loop0 set 1 esp on
+  sudo e2fsck -fp /dev/mapper/loop0p2 || sudo e2fsck -fy /dev/mapper/loop0p2
+  sudo resize2fs /dev/mapper/loop0p2
+}
+
+mount_guest_filesystems_bookworm() {
+  log_step "Mounting guest filesystems"
+  sudo mkdir -p "${ROOT_MOUNT_DIR}"
+  sudo mount /dev/mapper/loop0p2 "${ROOT_MOUNT_DIR}"
+  sudo mkdir -p "${ROOT_MOUNT_DIR}/boot/efi"
+  sudo mount /dev/mapper/loop0p1 "${ROOT_MOUNT_DIR}/boot/efi"
+  sudo cp /usr/bin/qemu-aarch64-static "${ROOT_MOUNT_DIR}/usr/bin/"
+}
+
+convert_guest_image_bookworm() {
+  log_step "Converting guest image"
+  sudo chroot "${ROOT_MOUNT_DIR}" /bin/bash -eux <<'EOF'
+apt-get update -qq
+apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server cloud-init
+systemctl enable ssh
+systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
+
+# Create user with password 'password' and enable password authentication
+useradd -m -s /bin/bash -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
+usermod -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' pi
+sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
+sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Remove Raspberry Pi kernel packages and their files
+apt-get remove -y --purge linux-image-6.18.34+rpt-rpi-v8 linux-image-rpi-v8 linux-image-rpi-2712 || true
+apt-get autoremove -y --purge || true
+
+# Remove any remaining RPi kernel files from /boot
+rm -f /boot/vmlinuz-6.18.34+rpt-rpi-2712 /boot/vmlinuz-6.18.34+rpt-rpi-v8
+rm -f /boot/initrd.img-6.18.34+rpt-rpi-2712 /boot/initrd.img-6.18.34+rpt-rpi-v8
+rm -rf /boot/firmware/initramfs_* /boot/firmware/vmlinuz*
+
+grep -qxF 'virtio' /etc/initramfs-tools/modules || echo 'virtio' >> /etc/initramfs-tools/modules
+grep -qxF 'virtio_blk' /etc/initramfs-tools/modules || echo 'virtio_blk' >> /etc/initramfs-tools/modules
+grep -qxF 'virtio_pci' /etc/initramfs-tools/modules || echo 'virtio_pci' >> /etc/initramfs-tools/modules
+grep -qxF 'virtio_net' /etc/initramfs-tools/modules || echo 'virtio_net' >> /etc/initramfs-tools/modules
+# Update initramfs for all installed kernels (should be just the generic one)
+update-initramfs -u -k all
+
+grub-install --target=arm64-efi --efi-directory=/boot/efi --bootloader-id=debian --removable
+update-grub
+
+sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT=.*/GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyAMA0,115200 earlycon=pl011,0x09000000 rootwait"/' /etc/default/grub
+
+if grep -q '^GRUB_DISABLE_LINUX_PARTUUID=' /etc/default/grub; then
+  sed -i 's/^GRUB_DISABLE_LINUX_PARTUUID=.*/GRUB_DISABLE_LINUX_PARTUUID=true/' /etc/default/grub
+else
+  echo 'GRUB_DISABLE_LINUX_PARTUUID=true' >> /etc/default/grub
+fi
+
+if grep -q '^GRUB_TERMINAL_INPUT=' /etc/default/grub; then
+  sed -i '/^GRUB_TERMINAL_INPUT=/d' /etc/default/grub
+fi
+if grep -q '^GRUB_TERMINAL_OUTPUT=' /etc/default/grub; then
+  sed -i '/^GRUB_TERMINAL_OUTPUT=/d' /etc/default/grub
+fi
+if grep -q '^GRUB_SERIAL_COMMAND=' /etc/default/grub; then
+  sed -i '/^GRUB_SERIAL_COMMAND=/d' /etc/default/grub
+fi
+if grep -q '^GRUB_TERMINAL=' /etc/default/grub; then
+  sed -i 's/^GRUB_TERMINAL=.*/GRUB_TERMINAL=console/' /etc/default/grub
+else
+  echo 'GRUB_TERMINAL=console' >> /etc/default/grub
+fi
+
+update-grub
+
+# Update fstab to use UUIDs
+BOOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p1)
+ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
+sed -i "s|^/dev/mapper/.*|UUID=${BOOT_UUID} /boot/efi vfat defaults 0 2|" /etc/fstab
+sed -i "s|^/dev/mapper/.*|UUID=${ROOT_UUID} / ext4 defaults,noatime 0 1|" /etc/fstab
+
+# Clean up unnecessary files
+rm -rf /boot/firmware
+ln -s efi /boot/firmware
+
+update-grub
+EOF
+}
+
+run_guest_boot_sanity_checks_bookworm() {
+  log_step "Running guest boot sanity checks"
+  sudo chroot "${ROOT_MOUNT_DIR}" test -f /boot/grub/grub.cfg
+  sudo chroot "${ROOT_MOUNT_DIR}" test -d /boot/efi/EFI
+  sudo chroot "${ROOT_MOUNT_DIR}" bash -lc 'ls /boot/initrd.img-* >/dev/null'
+  sudo chroot "${ROOT_MOUNT_DIR}" bash -lc 'ls /boot/vmlinuz-* >/dev/null'
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q GRUB_DISABLE_LINUX_PARTUUID=true /etc/default/grub
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* / ext4 defaults,noatime 0 1$' /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^UUID=.* /boot/efi vfat defaults 0 2$' /etc/fstab
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_blk$' /etc/initramfs-tools/modules
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_pci$' /etc/initramfs-tools/modules
+  sudo chroot "${ROOT_MOUNT_DIR}" grep -q '^virtio_net$' /etc/initramfs-tools/modules
+}
+
+unmount_guest_filesystems_bookworm() {
+  log_step "Unmounting guest filesystems"
+  if mountpoint -q "${ROOT_MOUNT_DIR}/dev"; then sudo umount "${ROOT_MOUNT_DIR}/dev"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/proc"; then sudo umount "${ROOT_MOUNT_DIR}/proc"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/sys"; then sudo umount "${ROOT_MOUNT_DIR}/sys"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}/run"; then sudo umount "${ROOT_MOUNT_DIR}/run"; fi
+  if mountpoint -q "${EFI_MOUNT_DIR}"; then sudo umount "${EFI_MOUNT_DIR}"; fi
+  if mountpoint -q "${ROOT_MOUNT_DIR}"; then sudo umount "${ROOT_MOUNT_DIR}"; fi
+  sudo kpartx -dv "${IMG_FILE_BOOKWORM}"
+}
+
+convert_to_qcow2_bookworm() {
+  log_step "Converting raw image to qcow2"
+  qemu-img convert -f raw -O qcow2 "${IMG_FILE_BOOKWORM}" disc.qcow2
+}
+
+build_containerdisk_image_bookworm() {
+  local image_tag="$1"
+  if should_push_image; then
+    log_step "Building and pushing containerdisk image"
+    if ! docker info 2>&1 | grep -q "ghcr.io"; then
+      docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+    fi
+    docker buildx build --platform "${BOOKWORM_IMG_PLATFORM}" -t "${image_tag}" --push .
+  else
+    log_step "Building containerdisk image without publishing"
+    docker buildx build --platform "${BOOKWORM_IMG_PLATFORM}" -t "${image_tag}" --load .
+  fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
