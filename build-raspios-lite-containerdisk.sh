@@ -476,19 +476,27 @@ expand_and_map_image_bookworm() {
   xz -df "${IMG_ARCHIVE_BOOKWORM}"
   IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
-  local kpartx_output
-  kpartx_output=$(sudo kpartx -av "${IMG_FILE_BOOKWORM}")
-  # Extract device names from kpartx output (format: "add map loopNpX (252:XX): ...")
-  BOOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p1' | awk '{print "/dev/mapper/" $3}')
-  ROOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p2' | awk '{print "/dev/mapper/" $3}')
+  # Clean up any existing mappings first
+  sudo kpartx -d "${IMG_FILE_BOOKWORM}" 2>/dev/null || true
+  # Map image and capture loop device
+  local map_output
+  map_output=$(sudo kpartx -av "${IMG_FILE_BOOKWORM}")
+  # Extract loop device name (format: "add map loopNpX (252:XX): ...")
+  local loop_name
+  loop_name=$(echo "${map_output}" | awk '/^add map / {sub(/p[0-9]+$/, "", $3); print $3; exit}')
+  LOOP_DEVICE_BOOKWORM="/dev/${loop_name}"
+  # Extract partition device names
+  BOOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p1' | awk '{print "/dev/mapper/" $3}')
+  ROOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p2' | awk '{print "/dev/mapper/" $3}')
   # Wait for device nodes to be created
   sleep 2
-  # Rescan loop device to recognize new size
-  sudo partprobe /dev/loop0 || true
-  sleep 1
-  sudo growpart /dev/loop0 2 || true
+  # Resize partition
+  sudo growpart "${LOOP_DEVICE_BOOKWORM}" 2
+  # Update kpartx mappings
   sudo kpartx -u "${IMG_FILE_BOOKWORM}"
-  sudo parted /dev/loop0 set 1 esp on
+  # Set boot partition flag
+  sudo parted -s "${LOOP_DEVICE_BOOKWORM}" set 1 esp on
+  # Check and resize filesystem
   sudo e2fsck -fp "${ROOT_DEV_BOOKWORM}" || sudo e2fsck -fy "${ROOT_DEV_BOOKWORM}"
   sudo resize2fs "${ROOT_DEV_BOOKWORM}"
 }
