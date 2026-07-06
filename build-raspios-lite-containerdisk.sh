@@ -437,7 +437,39 @@ main() {
   log_step "Image built: ${image_tag}"
 }
 
+# Bookworm oldstable build
+set_fixed_constant BOOKWORM_IMG_URL "https://downloads.raspberrypi.com/raspios_oldstable_lite_arm64/images/raspios_oldstable_lite_arm64-2026-06-19/2026-06-18-raspios-bookworm-arm64-lite.img.xz"
+set_fixed_constant BOOKWORM_IMG_NAME "2026-06-18-raspios-bookworm-arm64-lite"
+
+build_bookworm_containerdisk() {
+  local image_tag="${IMAGE_TAG_OVERRIDE:-$(printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${BOOKWORM_IMG_NAME}")}"
+
+  export IMG_URL="${BOOKWORM_IMG_URL}"
+  export IMG_NAME="${BOOKWORM_IMG_NAME}"
+  export IMG_PLATFORM="linux/arm64"
+
+  log_step "Building containerdisk image from ${BOOKWORM_IMG_NAME}"
+  validate_bootstrap_tools
+  install_host_dependencies
+  validate_host_tools
+  download_source_image
+  expand_and_map_image
+  mount_guest_filesystems
+  convert_guest_image
+  run_guest_boot_sanity_checks
+  apply_acpi_fix
+  unmount_guest_filesystems || return 1
+  convert_to_qcow2
+  # run_boot_smoke_validation
+  build_containerdisk_image "${image_tag}"
+  log_step "Image built: ${image_tag}"
+}
+
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   trap cleanup EXIT
-  main "$@"
+  if [[ "${BUILD_TARGET:-trixie}" == "bookworm" ]]; then
+    build_bookworm_containerdisk
+  else
+    main "$@"
+  fi
 fi
