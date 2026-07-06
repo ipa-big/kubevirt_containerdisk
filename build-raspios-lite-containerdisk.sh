@@ -444,6 +444,9 @@ set_fixed_constant BOOKWORM_IMG_NAME "2026-06-18-raspios-bookworm-arm64-lite"
 build_bookworm_containerdisk() {
   local image_tag="${IMAGE_TAG_OVERRIDE:-$(printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${BOOKWORM_IMG_NAME}")}"
 
+  # Temporarily unset readonly variables to override
+  unset IMG_URL IMG_NAME IMG_PLATFORM 2>/dev/null || true
+  
   export IMG_URL="${BOOKWORM_IMG_URL}"
   export IMG_NAME="${BOOKWORM_IMG_NAME}"
   export IMG_PLATFORM="linux/arm64"
