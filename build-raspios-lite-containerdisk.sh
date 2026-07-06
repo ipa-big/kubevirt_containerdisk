@@ -474,7 +474,11 @@ expand_and_map_image_bookworm() {
   xz -df "${IMG_ARCHIVE_BOOKWORM}"
   IMG_FILE_BOOKWORM="${BOOKWORM_IMG_NAME}.img"
   qemu-img resize "${IMG_FILE_BOOKWORM}" +2G
-  sudo kpartx -av "${IMG_FILE_BOOKWORM}"
+  local kpartx_output
+  kpartx_output=$(sudo kpartx -av "${IMG_FILE_BOOKWORM}")
+  # Extract device names from kpartx output
+  BOOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p1' | awk '{print $3}')
+  ROOT_DEV_BOOKWORM=$(echo "${kpartx_output}" | grep 'p2' | awk '{print $3}')
   # Wait for device nodes to be created
   sleep 2
   # Rescan loop device to recognize new size
@@ -483,16 +487,16 @@ expand_and_map_image_bookworm() {
   sudo growpart /dev/loop0 2 || true
   sudo kpartx -u "${IMG_FILE_BOOKWORM}"
   sudo parted /dev/loop0 set 1 esp on
-  sudo e2fsck -fp /dev/mapper/loop0p2 || sudo e2fsck -fy /dev/mapper/loop0p2
-  sudo resize2fs /dev/mapper/loop0p2
+  sudo e2fsck -fp "${ROOT_DEV_BOOKWORM}" || sudo e2fsck -fy "${ROOT_DEV_BOOKWORM}"
+  sudo resize2fs "${ROOT_DEV_BOOKWORM}"
 }
 
 mount_guest_filesystems_bookworm() {
   log_step "Mounting guest filesystems"
   sudo mkdir -p "${ROOT_MOUNT_DIR}"
-  sudo mount /dev/mapper/loop0p2 "${ROOT_MOUNT_DIR}"
+  sudo mount "${ROOT_DEV_BOOKWORM}" "${ROOT_MOUNT_DIR}"
   sudo mkdir -p "${ROOT_MOUNT_DIR}/boot/efi"
-  sudo mount /dev/mapper/loop0p1 "${ROOT_MOUNT_DIR}/boot/efi"
+  sudo mount "${BOOT_DEV_BOOKWORM}" "${ROOT_MOUNT_DIR}/boot/efi"
   sudo cp /usr/bin/qemu-aarch64-static "${ROOT_MOUNT_DIR}/usr/bin/"
 }
 
@@ -555,8 +559,8 @@ fi
 update-grub
 
 # Update fstab to use UUIDs
-BOOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p1)
-ROOT_UUID=$(blkid -o value -s UUID /dev/mapper/loop0p2)
+BOOT_UUID=$(blkid -o value -s UUID "${BOOT_DEV_BOOKWORM}")
+ROOT_UUID=$(blkid -o value -s UUID "${ROOT_DEV_BOOKWORM}")
 sed -i "s|^/dev/mapper/.*|UUID=${BOOT_UUID} /boot/efi vfat defaults 0 2|" /etc/fstab
 sed -i "s|^/dev/mapper/.*|UUID=${ROOT_UUID} / ext4 defaults,noatime 0 1|" /etc/fstab
 
