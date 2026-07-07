@@ -38,7 +38,9 @@ The integration test (`tests/vm-integration-test-refactored.sh`) automatically c
 
 ### Required environment variables
 
-- `IMAGE_TAG_OVERRIDE` (optional)
+- `IMAGE_TAG_OVERRIDE` (optional, overrides auto-generated tag)
+
+**Image naming:** The image tag is automatically derived from the source image date (e.g., `2026-06-18`). The image name strips the date prefix, so `2026-06-18-raspios-trixie-arm64-lite` becomes `ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18`.
 - `PUSH_IMAGE` (optional, defaults to `true`; set to `false` to validate without publishing)
 
 `GHCR_USERNAME` and `GHCR_TOKEN` are required only when publishing.

@@ -120,7 +120,16 @@ validate_host_tools() {
 }
 
 default_image_tag() {
-  printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${IMG_NAME}"
+  # Extract date from image filename (e.g., 2026-06-18 from 2026-06-18-raspios-trixie-arm64-lite)
+  local img_name="${IMG_NAME:-${IMAGE_FILE:-}}"
+  local date_part
+  date_part="$(echo "${img_name}" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}')"
+  
+  # Extract image name without date prefix (e.g., raspios-trixie-arm64-lite)
+  local image_name_no_date
+  image_name_no_date="$(echo "${img_name}" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-//')"
+  
+  printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s:%s\n' "${image_name_no_date}" "${date_part}"
 }
 
 should_push_image() {
@@ -447,7 +456,12 @@ set_fixed_constant BOOKWORM_ROOT_MOUNT_DIR "/mnt/bookworm_root"
 set_fixed_constant BOOKWORM_EFI_MOUNT_DIR "${BOOKWORM_ROOT_MOUNT_DIR}/boot/efi"
 
 build_bookworm_containerdisk() {
-  local image_tag="${IMAGE_TAG_OVERRIDE:-$(printf 'ghcr.io/ipa-big/kubevirt_containerdisk/%s_uefi\n' "${BOOKWORM_IMG_NAME}")}"
+  local img_name="${BOOKWORM_IMG_NAME}"
+  local date_part
+  date_part="$(echo "${img_name}" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}')"
+  local image_name_no_date
+  image_name_no_date="$(echo "${img_name}" | sed 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-//')"
+  local image_tag="${IMAGE_TAG_OVERRIDE:-ghcr.io/ipa-big/kubevirt_containerdisk/${image_name_no_date}:${date_part}}"
 
   log_step "Building containerdisk image from ${BOOKWORM_IMG_NAME}"
   validate_bootstrap_tools

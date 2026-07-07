@@ -74,7 +74,7 @@ test_main_runs_all_stages_in_order() {
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
 }
 
 test_main_stops_before_qcow2_when_unmount_fails() {
@@ -649,7 +649,7 @@ test_main_runs_sanity_check_and_boot_validation_before_build() {
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
   unset PUSH_IMAGE
 }
 

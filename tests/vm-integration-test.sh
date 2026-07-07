@@ -14,7 +14,7 @@ CONTAINERDISK_PATH="${CONTAINERDISK_PATH:-/tmp/containerdisk.qcow2}"
 TEST_TIMEOUT="${TEST_TIMEOUT:-300}"
 
 # Image tag - must match default_image_tag() from build-raspios-lite-containerdisk.sh
-IMAGE_TAG="${IMAGE_TAG:-ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi}"
+IMAGE_TAG="${IMAGE_TAG:-ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18}"
 
 # Colors for output
 RED='\033[0;31m'
