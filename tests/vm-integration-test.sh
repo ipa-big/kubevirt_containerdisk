@@ -200,7 +200,7 @@ spec:
       volumes:
         - name: containerdisk
           containerDisk:
-            image: ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi
+            image: ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18
         - name: cloudinit
           cloudInitNoCloud:
             secretRef:
