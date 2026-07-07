@@ -89,10 +89,6 @@ export PUSH_IMAGE=false
 bash ./build-raspios-lite-containerdisk.sh
 ```
 
-The script runs a lightweight boot smoke validation before publishing.
-Install `qemu-efi-aarch64` so the smoke validation can boot with ARM64 UEFI firmware.
-The smoke validation uses disposable UEFI vars and QEMU snapshot mode, so `disc.qcow2` remains pristine for packaging.
-
 The script generates `disc.qcow2` and packages it at `/disk/disk.qcow2`, ready to use as a KubeVirt containerdisk.
 
 ## References
@@ -116,11 +112,3 @@ If your VM still crashes after applying this fix:
 3. Try using the fallback cmdline: Copy `cmdline_acpi_fallback.txt` to `cmdline.txt`
 4. Ensure your KubeVirt VM configuration uses the correct machine type
 
-#### Smoke Validation Fails
-
-The smoke validation checks if the VM boots successfully. If it fails:
-
-1. Check the VM's serial console output for kernel panic messages
-2. Verify the containerdisk was built with the ACPI fix
-3. Ensure your KubeVirt cluster has sufficient resources (at least 1GB RAM)
-4. Try deploying with increased timeout in the VM manifest

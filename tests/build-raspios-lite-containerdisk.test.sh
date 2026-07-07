@@ -486,58 +486,6 @@ test_dockerfile_packages_disc_at_kubevirt_path() {
   assert_contains "${dockerfile}" 'ADD --chown=107:107 ./disc.qcow2 /disk/disk.qcow2'
 }
 
-test_run_boot_smoke_validation_uses_serial_login_probe() {
-  # shellcheck disable=SC1090
-  source "${SCRIPT_PATH}"
-
-  local boot_smoke_args_file="${ROOT_DIR}/.boot-smoke-args"
-  local qemu_args_file="${ROOT_DIR}/.qemu-args"
-  local copy_args_file="${ROOT_DIR}/.boot-smoke-copy-args"
-  local rm_args_file="${ROOT_DIR}/.boot-smoke-rm-args"
-  rm -f "${boot_smoke_args_file}" "${qemu_args_file}"
-
-  cp() {
-    printf '%s\n' "$*" > "${copy_args_file}"
-  }
-  rm() {
-    printf '%s\n' "$*" > "${rm_args_file}"
-  }
-  timeout() {
-    printf '%s\n' "$*" > "${boot_smoke_args_file}"
-    shift 1
-    "$@"
-    return 124
-  }
-  qemu-system-aarch64() {
-    printf '%s\n' "$*" > "${qemu_args_file}"
-    printf 'Debian GNU/Linux 13 raspberrypi ttyAMA0\nraspberrypi login: \n'
-  }
-  log_step() { :; }
-
-  run_boot_smoke_validation
-
-  assert_contains "$(<"${boot_smoke_args_file}")" "${BOOT_SMOKE_TIMEOUT_SECONDS}"
-  assert_contains "$(<"${qemu_args_file}")" "-M virt"
-  assert_contains "$(<"${qemu_args_file}")" "-cpu cortex-a72"
-  assert_contains "$(<"${qemu_args_file}")" "-serial mon:stdio"
-  assert_contains "$(<"${qemu_args_file}")" "-snapshot"
-  assert_contains "$(<"${qemu_args_file}")" "-drive if=pflash,format=raw,readonly=on,file=/usr/share/AAVMF/AAVMF_CODE.fd"
-  assert_contains "$(<"${qemu_args_file}")" "-drive if=pflash,format=raw,file=.boot-smoke-aavmf-vars.fd"
-  assert_contains "$(<"${qemu_args_file}")" "-drive file=disc.qcow2,if=virtio,format=qcow2"
-  assert_eq "$(<"${copy_args_file}")" "/usr/share/AAVMF/AAVMF_VARS.fd .boot-smoke-aavmf-vars.fd"
-  assert_contains "$(<"${rm_args_file}")" ".boot-smoke-aavmf-vars.fd"
-  command rm -f "${boot_smoke_args_file}" "${qemu_args_file}" "${copy_args_file}" "${rm_args_file}"
-}
-
-test_readme_documents_boot_validation() {
-  local readme
-  readme="$(<"${ROOT_DIR}/README.md")"
-
-  assert_contains "${readme}" "The script runs a lightweight boot smoke validation before publishing."
-  assert_contains "${readme}" "Install \`qemu-efi-aarch64\` so the smoke validation can boot with ARM64 UEFI firmware."
-  assert_contains "${readme}" "The smoke validation uses disposable UEFI vars and QEMU snapshot mode, so \`disc.qcow2\` remains pristine for packaging."
-  assert_contains "${readme}" "Set \`PUSH_IMAGE=false\` to validate the build without publishing"
-}
 
 test_main_runs_all_stages_in_order
 test_main_stops_before_qcow2_when_unmount_fails
@@ -565,8 +513,6 @@ test_dockerfile_packages_disc_at_kubevirt_path
 test_validate_host_tools_requires_qemu_system_for_smoke_validation
 test_validate_host_tools_requires_arm64_uefi_firmware_files
 test_install_host_dependencies_installs_qemu_system_emulator
-test_run_boot_smoke_validation_uses_serial_login_probe
-test_readme_documents_boot_validation
 
 # Appended boot contract regression tests (Task 1)
 
@@ -588,7 +534,7 @@ test_convert_guest_image_writes_explicit_boot_contract() {
 
   convert_guest_image
 
-  assert_contains "${chroot_script}" "apt-get install -qq -y linux-image-arm64 grub-efi-arm64"
+  assert_contains "${chroot_script}" "apt-get install -qq -y --no-install-recommends linux-image-arm64 grub-efi-arm64 openssh-server cloud-init"
   assert_contains "${chroot_script}" "grep -qxF 'virtio_blk' /etc/initramfs-tools/modules || echo 'virtio_blk' >> /etc/initramfs-tools/modules"
   assert_contains "${chroot_script}" "grep -qxF 'virtio_pci' /etc/initramfs-tools/modules || echo 'virtio_pci' >> /etc/initramfs-tools/modules"
   assert_contains "${chroot_script}" "grep -qxF 'virtio_net' /etc/initramfs-tools/modules || echo 'virtio_net' >> /etc/initramfs-tools/modules"
@@ -646,13 +592,12 @@ test_main_runs_sanity_check_and_boot_validation_before_build() {
   run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
   unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); }
   convert_to_qcow2() { calls+=("convert_to_qcow2"); }
-  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
   build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
   log_step() { :; }
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
   unset PUSH_IMAGE
 }
 
