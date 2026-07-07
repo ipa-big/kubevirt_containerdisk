@@ -682,6 +682,68 @@ test_convert_guest_image_runs_update_initramfs_after_module_and_grub_changes() {
 }
 
 
+test_build_all_builds_both_images() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  export GHCR_USERNAME="demo-user"
+  export GHCR_TOKEN="demo-token"
+  export BUILD_ALL="true"
+  unset PUSH_IMAGE
+
+  local trixie_calls=()
+  local bookworm_calls=()
+
+  build_single_containerdisk() {
+    local img_name="$1"
+    if [[ "${img_name}" == "${IMG_NAME}" ]]; then
+      trixie_calls+=("trixie")
+    elif [[ "${img_name}" == "${BOOKWORM_IMG_NAME}" ]]; then
+      bookworm_calls+=("bookworm")
+    fi
+  }
+
+  build_single_containerdisk "$IMG_NAME" || {
+    echo "Trixie build failed, stopping"
+    exit 1
+  }
+
+  build_single_containerdisk "$BOOKWORM_IMG_NAME" || {
+    echo "Bookworm build failed, stopping"
+    exit 1
+  }
+
+  assert_eq "${#trixie_calls[@]}" "1"
+  assert_eq "${#bookworm_calls[@]}" "1"
+}
+
+test_build_all_fails_fast_on_first_error() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  export GHCR_USERNAME="demo-user"
+  export GHCR_TOKEN="demo-token"
+  export BUILD_ALL="true"
+  unset PUSH_IMAGE
+
+  local call_count=0
+  build_single_containerdisk() {
+    call_count=$((call_count + 1))
+    if [[ ${call_count} -eq 1 ]]; then
+      return 1
+    fi
+    return 0
+  }
+
+  local result=0
+  build_single_containerdisk "$IMG_NAME" || {
+    result=1
+  }
+
+  assert_eq "${result}" "1"
+  assert_eq "${call_count}" "1"
+}
+
 test_build_single_containerdisk_with_different_images() {
   # shellcheck disable=SC1090
   source "${SCRIPT_PATH}"
@@ -741,5 +803,7 @@ test_convert_guest_image_writes_explicit_boot_contract
 test_run_guest_boot_sanity_checks_verifies_kernel_initramfs_grub_and_fstab
 test_main_runs_sanity_check_and_boot_validation_before_build
 test_convert_guest_image_runs_update_initramfs_after_module_and_grub_changes
+test_build_all_builds_both_images
+test_build_all_fails_fast_on_first_error
 
 echo "PASS"

@@ -666,7 +666,17 @@ build_containerdisk_image_bookworm() {
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
   trap cleanup EXIT
-  if [[ "${BUILD_TARGET:-trixie}" == "bookworm" ]]; then
+  if [[ "${BUILD_ALL:-false}" == "true" ]]; then
+    log_step "Building both Trixie and Bookworm containerdisk images"
+    build_single_containerdisk "$IMG_NAME" || {
+      log_step "Trixie build failed, stopping"
+      exit 1
+    }
+    build_single_containerdisk "$BOOKWORM_IMG_NAME" || {
+      log_step "Bookworm build failed, stopping"
+      exit 1
+    }
+  elif [[ "${BUILD_TARGET:-trixie}" == "bookworm" ]]; then
     build_bookworm_containerdisk
   else
     main "$@"
