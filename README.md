@@ -41,9 +41,16 @@ The integration test (`tests/vm-integration-test-refactored.sh`) automatically c
 - `IMAGE_TAG_OVERRIDE` (optional, overrides auto-generated tag)
 
 **Image naming:** The image tag is automatically derived from the source image date (e.g., `2026-06-18`). The image name strips the date prefix, so `2026-06-18-raspios-trixie-arm64-lite` becomes `ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18`.
+
 - `PUSH_IMAGE` (optional, defaults to `true`; set to `false` to validate without publishing)
 
 `GHCR_USERNAME` and `GHCR_TOKEN` are required only when publishing.
+
+#### Build options
+
+- `BUILD_ALL` (optional, defaults to `false`) - When set to `true`, builds both Trixie and Bookworm images sequentially. Each image is pushed independently. The build stops on the first failure.
+
+- `BUILD_TARGET` (optional, defaults to `trixie`) - Specifies which Raspberry Pi OS version to build when `BUILD_ALL` is `false`. Valid values are `trixie` (default) and `bookworm`.
 
 ### Local usage
 
@@ -55,6 +62,32 @@ bash ./build-raspios-lite-containerdisk.sh
 ```
 
 To publish to GHCR, export `GHCR_USERNAME` and `GHCR_TOKEN`, then leave `PUSH_IMAGE` unset (or set it to `true`) before running the script.
+
+### Usage examples
+
+**Build single image (Trixie - default):**
+```bash
+bash ./build-raspios-lite-containerdisk.sh
+```
+
+**Build single image (Bookworm with BUILD_TARGET):**
+```bash
+export BUILD_TARGET=bookworm
+bash ./build-raspios-lite-containerdisk.sh
+```
+
+**Build both images (BUILD_ALL=true):**
+```bash
+export BUILD_ALL=true
+bash ./build-raspios-lite-containerdisk.sh
+```
+
+**Build locally without publishing (BUILD_ALL=true PUSH_IMAGE=false):**
+```bash
+export BUILD_ALL=true
+export PUSH_IMAGE=false
+bash ./build-raspios-lite-containerdisk.sh
+```
 
 The script runs a lightweight boot smoke validation before publishing.
 Install `qemu-efi-aarch64` so the smoke validation can boot with ARM64 UEFI firmware.
