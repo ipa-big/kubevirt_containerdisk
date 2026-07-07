@@ -120,8 +120,7 @@ validate_host_tools() {
 }
 
 default_image_tag() {
-  # Extract date from image filename (e.g., 2026-06-18 from 2026-06-18-raspios-trixie-arm64-lite)
-  local img_name="${IMG_NAME:-${IMAGE_FILE:-}}"
+  local img_name="${1:-${IMG_NAME:-${IMAGE_FILE:-}}}"
   local date_part
   date_part="$(echo "${img_name}" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}')"
   
@@ -426,8 +425,9 @@ build_containerdisk_image() {
   fi
 }
 
-main() {
-  local image_tag="${IMAGE_TAG_OVERRIDE:-$(default_image_tag)}"
+build_single_containerdisk() {
+  local img_name="$1"
+  local image_tag="${IMAGE_TAG_OVERRIDE:-$(default_image_tag "${img_name}")}"
 
   validate_runtime_inputs
   validate_bootstrap_tools
@@ -445,6 +445,10 @@ main() {
   # run_boot_smoke_validation
   build_containerdisk_image "${image_tag}"
   log_step "Image built: ${image_tag}"
+}
+
+main() {
+  build_single_containerdisk "${IMG_NAME}"
 }
 
 # Bookworm oldstable build

@@ -68,13 +68,14 @@ test_main_runs_all_stages_in_order() {
   run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
   unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); }
   convert_to_qcow2() { calls+=("convert_to_qcow2"); }
-  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
+  add_userconf_trixie() { calls+=("add_userconf_trixie"); }
+  apply_acpi_fix() { calls+=("apply_acpi_fix"); }
   build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
-  log_step() { :; }
+  log_step() { calls+=("log_step:$1"); }
 
   main
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems convert_to_qcow2 run_boot_smoke_validation build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image add_userconf_trixie run_guest_boot_sanity_checks apply_acpi_fix unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18 log_step:Image built: ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
 }
 
 test_main_stops_before_qcow2_when_unmount_fails() {
@@ -97,7 +98,8 @@ test_main_stops_before_qcow2_when_unmount_fails() {
   run_guest_boot_sanity_checks() { calls+=("run_guest_boot_sanity_checks"); }
   unmount_guest_filesystems() { calls+=("unmount_guest_filesystems"); return 1; }
   convert_to_qcow2() { calls+=("convert_to_qcow2"); }
-  run_boot_smoke_validation() { calls+=("run_boot_smoke_validation"); }
+  add_userconf_trixie() { calls+=("add_userconf_trixie"); }
+  apply_acpi_fix() { calls+=("apply_acpi_fix"); }
   build_containerdisk_image() { calls+=("build_containerdisk_image:$1"); }
   log_step() { :; }
 
@@ -105,7 +107,7 @@ test_main_stops_before_qcow2_when_unmount_fails() {
     fail "expected main to fail when unmount_guest_filesystems fails"
   fi
 
-  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image run_guest_boot_sanity_checks unmount_guest_filesystems"
+  assert_eq "${calls[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image add_userconf_trixie run_guest_boot_sanity_checks apply_acpi_fix unmount_guest_filesystems"
 }
 
 test_main_prefers_image_tag_override() {
@@ -128,7 +130,8 @@ test_main_prefers_image_tag_override() {
   run_guest_boot_sanity_checks() { :; }
   unmount_guest_filesystems() { :; }
   convert_to_qcow2() { :; }
-  run_boot_smoke_validation() { :; }
+  add_userconf_trixie() { :; }
+  apply_acpi_fix() { :; }
   build_containerdisk_image() { selected_tag="$1"; }
   log_step() { :; }
 
@@ -678,6 +681,59 @@ test_convert_guest_image_runs_update_initramfs_after_module_and_grub_changes() {
   assert_contains "${chroot_script}" "ln -s efi /boot/firmware"
 }
 
+
+test_build_single_containerdisk_with_different_images() {
+  # shellcheck disable=SC1090
+  source "${SCRIPT_PATH}"
+
+  export GHCR_USERNAME="demo-user"
+  export GHCR_TOKEN="demo-token"
+  unset PUSH_IMAGE
+
+  # Test 1: Trixie image
+  local calls_trixie=()
+  validate_runtime_inputs() { calls_trixie+=("validate_runtime_inputs"); }
+  validate_bootstrap_tools() { calls_trixie+=("validate_bootstrap_tools"); }
+  install_host_dependencies() { calls_trixie+=("install_host_dependencies"); }
+  validate_host_tools() { calls_trixie+=("validate_host_tools"); }
+  download_source_image() { calls_trixie+=("download_source_image"); }
+  expand_and_map_image() { calls_trixie+=("expand_and_map_image"); }
+  mount_guest_filesystems() { calls_trixie+=("mount_guest_filesystems"); }
+  convert_guest_image() { calls_trixie+=("convert_guest_image"); }
+  run_guest_boot_sanity_checks() { calls_trixie+=("run_guest_boot_sanity_checks"); }
+  unmount_guest_filesystems() { calls_trixie+=("unmount_guest_filesystems"); }
+  convert_to_qcow2() { calls_trixie+=("convert_to_qcow2"); }
+  add_userconf_trixie() { calls_trixie+=("add_userconf_trixie"); }
+  apply_acpi_fix() { calls_trixie+=("apply_acpi_fix"); }
+  log_step() { calls_trixie+=("log_step:$1"); }
+  build_containerdisk_image() { calls_trixie+=("build_containerdisk_image:$1"); }
+
+  build_single_containerdisk "${IMG_NAME}"
+
+  assert_eq "${calls_trixie[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image add_userconf_trixie run_guest_boot_sanity_checks apply_acpi_fix unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18 log_step:Image built: ghcr.io/ipa-big/kubevirt_containerdisk/raspios-trixie-arm64-lite:2026-06-18"
+
+  # Test 2: Bookworm image - use build_single_containerdisk with different image name
+  local calls_bookworm=()
+  validate_runtime_inputs() { calls_bookworm+=("validate_runtime_inputs"); }
+  validate_bootstrap_tools() { calls_bookworm+=("validate_bootstrap_tools"); }
+  install_host_dependencies() { calls_bookworm+=("install_host_dependencies"); }
+  validate_host_tools() { calls_bookworm+=("validate_host_tools"); }
+  download_source_image() { calls_bookworm+=("download_source_image"); }
+  expand_and_map_image() { calls_bookworm+=("expand_and_map_image"); }
+  mount_guest_filesystems() { calls_bookworm+=("mount_guest_filesystems"); }
+  convert_guest_image() { calls_bookworm+=("convert_guest_image"); }
+  run_guest_boot_sanity_checks() { calls_bookworm+=("run_guest_boot_sanity_checks"); }
+  unmount_guest_filesystems() { calls_bookworm+=("unmount_guest_filesystems"); }
+  convert_to_qcow2() { calls_bookworm+=("convert_to_qcow2"); }
+  add_userconf_trixie() { calls_bookworm+=("add_userconf_trixie"); }
+  apply_acpi_fix() { calls_bookworm+=("apply_acpi_fix"); }
+  log_step() { calls_bookworm+=("log_step:$1"); }
+  build_containerdisk_image() { calls_bookworm+=("build_containerdisk_image:$1"); }
+
+  build_single_containerdisk "2026-06-18-raspios-bookworm-arm64-lite"
+
+  assert_eq "${calls_bookworm[*]}" "validate_runtime_inputs validate_bootstrap_tools install_host_dependencies validate_host_tools download_source_image expand_and_map_image mount_guest_filesystems convert_guest_image add_userconf_trixie run_guest_boot_sanity_checks apply_acpi_fix unmount_guest_filesystems convert_to_qcow2 build_containerdisk_image:ghcr.io/ipa-big/kubevirt_containerdisk/raspios-bookworm-arm64-lite:2026-06-18 log_step:Image built: ghcr.io/ipa-big/kubevirt_containerdisk/raspios-bookworm-arm64-lite:2026-06-18"
+}
 
 # Invoke appended tests
 
