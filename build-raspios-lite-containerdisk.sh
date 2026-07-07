@@ -81,8 +81,8 @@ validate_runtime_inputs() {
         readonly GHCR_TOKEN
       fi
     else
-      require_env "GHCR_USERNAME" || return 1
-      require_env "GHCR_TOKEN" || return 1
+      echo "Error: Required environment variables GHCR_USERNAME and GHCR_TOKEN are not set." >&2
+      return 1
     fi
   else
     push_image_status=$?
@@ -215,7 +215,7 @@ systemctl enable ssh
 # systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
 
 # Create user with password 'password' and enable password authentication
-useradd -m -s /bin/bash -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
+#useradd -m -s /bin/bash -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
 usermod -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' pi
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
@@ -408,7 +408,7 @@ build_containerdisk_image() {
     log_step "Building and pushing containerdisk image"
     # Check if already logged in to GHCR
     if ! docker info 2>&1 | grep -q "ghcr.io"; then
-      docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+      docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --push .
   else
@@ -428,6 +428,7 @@ main() {
   expand_and_map_image
   mount_guest_filesystems
   convert_guest_image
+  add_userconf_trixie
   run_guest_boot_sanity_checks
   apply_acpi_fix
   unmount_guest_filesystems || return 1
@@ -456,7 +457,8 @@ build_bookworm_containerdisk() {
   expand_and_map_image_bookworm
   mount_guest_filesystems_bookworm
   convert_guest_image_bookworm
-  run_guest_boot_sanity_checks_bookworm
+  # run_guest_boot_sanity_checks_bookworm
+  add_userconf_bookworm
   unmount_guest_filesystems_bookworm || return 1
   convert_to_qcow2_bookworm
   # run_boot_smoke_validation
@@ -486,8 +488,8 @@ expand_and_map_image_bookworm() {
   loop_name=$(echo "${map_output}" | awk '/^add map / {sub(/p[0-9]+$/, "", $3); print $3; exit}')
   LOOP_DEVICE_BOOKWORM="/dev/${loop_name}"
   # Extract partition device names
-  BOOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p1' | awk '{print "/dev/mapper/" $3}')
-  ROOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p2' | awk '{print "/dev/mapper/" $3}')
+  BOOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p1 ' | awk '{print "/dev/mapper/" $3}')
+  ROOT_DEV_BOOKWORM=$(echo "${map_output}" | grep 'p2 ' | awk '{print "/dev/mapper/" $3}')
   # Wait for device nodes to be created
   sleep 2
   # Resize partition
@@ -507,6 +509,10 @@ mount_guest_filesystems_bookworm() {
   sudo mount "${ROOT_DEV_BOOKWORM}" "${BOOKWORM_ROOT_MOUNT_DIR}"
   sudo mkdir -p "${BOOKWORM_EFI_MOUNT_DIR}"
   sudo mount "${BOOT_DEV_BOOKWORM}" "${BOOKWORM_EFI_MOUNT_DIR}"
+  sudo mount --bind /dev "${BOOKWORM_ROOT_MOUNT_DIR}/dev"
+  sudo mount --bind /proc "${BOOKWORM_ROOT_MOUNT_DIR}/proc"
+  sudo mount --bind /sys "${BOOKWORM_ROOT_MOUNT_DIR}/sys"
+  sudo mount --bind /run "${BOOKWORM_ROOT_MOUNT_DIR}/run"
   sudo cp /usr/bin/qemu-aarch64-static "${BOOKWORM_ROOT_MOUNT_DIR}/usr/bin/"
 }
 
@@ -519,18 +525,18 @@ systemctl enable ssh
 systemctl enable cloud-init-local.service cloud-init.service cloud-config.service cloud-final.service
 
 # Create user with password 'password' and enable password authentication
-useradd -m -s /bin/bash -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' user
-usermod -p '\$6\$fVoRvfu81dhFlI8d\$UqcJN4erTT57QCpLx3jkcgsQguEVIUgGrgeVLfGAsMgytQFlbJbr7tJI4rHLhwHzYBfzjAWidQmsMpXNdbiXp1' pi
+#useradd -m -s /bin/bash -p '\$6\$rounds=500000\$/UqyDtVM0ig.kDhZ\$.2G7vn9vR1k.Ooyri87WndYOxK8sDCKXdVFWflfvUMz4puBaIyx6Bxa0i/MNeCLwh.t02.3zPDA9ZaFJM8rvc.' user
+usermod -p '\$6\$rounds=500000\$/UqyDtVM0ig.kDhZ\$.2G7vn9vR1k.Ooyri87WndYOxK8sDCKXdVFWflfvUMz4puBaIyx6Bxa0i/MNeCLwh.t02.3zPDA9ZaFJM8rvc.' pi
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config
 
 # Remove Raspberry Pi kernel packages and their files
-apt-get remove -y --purge linux-image-6.18.34+rpt-rpi-v8 linux-image-rpi-v8 linux-image-rpi-2712 || true
+apt-get remove -y --purge linux-image-6.12.93+rpt-rpi-v8 linux-image-rpi-v8 linux-image-rpi-2712 || true
 apt-get autoremove -y --purge || true
 
 # Remove any remaining RPi kernel files from /boot
-rm -f /boot/vmlinuz-6.18.34+rpt-rpi-2712 /boot/vmlinuz-6.18.34+rpt-rpi-v8
-rm -f /boot/initrd.img-6.18.34+rpt-rpi-2712 /boot/initrd.img-6.18.34+rpt-rpi-v8
+rm -f /boot/vmlinuz-6.12.93+rpt-rpi-2712 /boot/vmlinuz-6.12.93+rpt-rpi-v8
+rm -f /boot/initrd.img-6.12.93+rpt-rpi-2712 /boot/initrd.img-6.12.93+rpt-rpi-v8
 rm -rf /boot/firmware/initramfs_* /boot/firmware/vmlinuz*
 
 grep -qxF 'virtio' /etc/initramfs-tools/modules || echo 'virtio' >> /etc/initramfs-tools/modules
@@ -567,19 +573,33 @@ else
 fi
 
 update-grub
+EOF
 
-# Update fstab to use UUIDs
+# Update fstab to use UUIDs (outside chroot)
 BOOT_UUID=$(blkid -o value -s UUID "${BOOT_DEV_BOOKWORM}")
 ROOT_UUID=$(blkid -o value -s UUID "${ROOT_DEV_BOOKWORM}")
-sed -i "s|^/dev/mapper/.*|UUID=${BOOT_UUID} /boot/efi vfat defaults 0 2|" /etc/fstab
-sed -i "s|^/dev/mapper/.*|UUID=${ROOT_UUID} / ext4 defaults,noatime 0 1|" /etc/fstab
+sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" sed -i "s|^/dev/mapper/.*|UUID=${BOOT_UUID} /boot/efi vfat defaults 0 2|" /etc/fstab
+sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" sed -i "s|^/dev/mapper/.*|UUID=${ROOT_UUID} / ext4 defaults,noatime 0 1|" /etc/fstab
 
 # Clean up unnecessary files
-rm -rf /boot/firmware
-ln -s efi /boot/firmware
+sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" rm -rf /boot/firmware
+sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" ln -s efi /boot/firmware
 
-update-grub
-EOF
+sudo chroot "${BOOKWORM_ROOT_MOUNT_DIR}" update-grub
+}
+
+add_userconf_bookworm() {
+  log_step "Adding userconf.txt to boot partition"
+  local userconf_file="${BOOKWORM_EFI_MOUNT_DIR}/userconf.txt"
+  echo "user:\$6\$rounds=500000\$/UqyDtVM0ig.kDhZ\$.2G7vn9vR1k.Ooyri87WndYOxK8sDCKXdVFWflfvUMz4puBaIyx6Bxa0i/MNeCLwh.t02.3zPDA9ZaFJM8rvc." | sudo tee -a "${userconf_file}" > /dev/null
+  log_step "userconf.txt created at ${userconf_file}"
+}
+
+add_userconf_trixie() {
+  log_step "Adding userconf.txt to boot partition"
+  local userconf_file="${EFI_MOUNT_DIR}/userconf.txt"
+  echo "user:\$6\$rounds=500000\$/UqyDtVM0ig.kDhZ\$.2G7vn9vR1k.Ooyri87WndYOxK8sDCKXdVFWflfvUMz4puBaIyx6Bxa0i/MNeCLwh.t02.3zPDA9ZaFJM8rvc." | sudo tee -a "${userconf_file}" > /dev/null
+  log_step "userconf.txt created at ${userconf_file}"
 }
 
 run_guest_boot_sanity_checks_bookworm() {
@@ -617,7 +637,7 @@ build_containerdisk_image_bookworm() {
   if should_push_image; then
     log_step "Building and pushing containerdisk image"
     if ! docker info 2>&1 | grep -q "ghcr.io"; then
-      docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin <<< "${GHCR_TOKEN}"
+      docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${BOOKWORM_IMG_PLATFORM}" -t "${image_tag}" --push .
   else

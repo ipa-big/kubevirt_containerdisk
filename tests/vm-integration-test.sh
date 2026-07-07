@@ -167,6 +167,15 @@ spec:
         kubevirt.io/size: small
         kubevirt.io/domain: raspios
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/arch
+                    operator: In
+                    values:
+                      - arm64
       domain:
         devices:
           disks:
@@ -190,8 +199,8 @@ spec:
           pod: {}
       volumes:
         - name: containerdisk
-          persistentVolumeClaim:
-            claimName: raspios-pvc
+          containerDisk:
+            image: ghcr.io/ipa-big/kubevirt_containerdisk/2026-06-18-raspios-trixie-arm64-lite_uefi
         - name: cloudinit
           cloudInitNoCloud:
             secretRef:

@@ -14,6 +14,28 @@ This containerdisk includes fixes for running Raspberry Pi OS in KubeVirt on ARM
 
 If the primary boot with `acpi=force` fails, copy `cmdline_acpi_fallback.txt` to `cmdline.txt` to use the fallback configuration.
 
+### Integration Test Network Configuration
+
+The integration test VMs use the `physical-net` network (a Multus network attachment to the physical bridge `br0`). This provides:
+
+- **External Network Access:** VMs can reach external networks through the physical bridge
+- **DHCP IP Assignment:** IPs are assigned via DHCP on the physical network
+- **Realistic Testing:** Tests reflect actual deployment scenarios
+
+**Prerequisites:**
+- NetworkAttachmentDefinition `physical-net` must exist in the test namespace
+- The underlying physical bridge `br0` must be properly configured on k3s nodes
+
+**To set up the network** (done automatically by the integration test):
+```bash
+kubectl get net-attach-def physical-bridge-network -n kubevirt -o yaml | \
+    sed 's/namespace: kubevirt/namespace: default/' | \
+    sed 's/name: physical-bridge-network/name: physical-net/' | \
+    kubectl apply -f -
+```
+
+The integration test (`tests/vm-integration-test-refactored.sh`) automatically creates this network if it doesn't exist.
+
 ### Required environment variables
 
 - `IMAGE_TAG_OVERRIDE` (optional)
