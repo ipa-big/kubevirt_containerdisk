@@ -14,6 +14,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,6 +31,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      GHCR_USERNAME: ${{ github.actor }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
