@@ -1,5 +1,6 @@
 .idea
 .worktrees/
+*.xz
 *.img
 *.qcow2
 *.log
