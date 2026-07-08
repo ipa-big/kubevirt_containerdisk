@@ -62,19 +62,3 @@ jobs:
           IMAGE_TAG_OVERRIDE: ${{ steps.image-tag.outputs.value }}
           BUILD_TARGET: 'bookworm'
         run: bash ./build-raspios-lite-containerdisk.sh
-
-  validate-raspberry-pi-containerdisk:
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Run dedicated Raspberry Pi containerdisk builder validation
-        env:
-          PUSH_IMAGE: 'false'
-        run: bash ./build-raspios-lite-containerdisk.sh
