@@ -28,7 +28,7 @@ jobs:
         env:
           BUILD_TARGET: 'trixie'
           PUSH_IMAGE: 'true'
-        run: bash ./build-raspios-lite-containerdisk.sh
+        run: ./build-raspios-lite-containerdisk.sh
 
   publish-bookworm-containerdisk:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -50,4 +50,4 @@ jobs:
         env:
           BUILD_TARGET: 'bookworm'
           PUSH_IMAGE: 'true'
-        run: bash ./build-raspios-lite-containerdisk.sh
+        run: ./build-raspios-lite-containerdisk.sh
