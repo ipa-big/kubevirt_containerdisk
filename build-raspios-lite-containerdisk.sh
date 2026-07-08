@@ -197,16 +197,18 @@ expand_and_map_image() {
 }
 
 mount_guest_filesystems() {
+  local root_mount_dir="${1:-${ROOT_MOUNT_DIR}}"
+  local efi_mount_dir="${2:-${EFI_MOUNT_DIR}}"
   log_step "Mounting guest filesystems"
-  sudo mkdir -p "${ROOT_MOUNT_DIR}"
-  sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p2" "${ROOT_MOUNT_DIR}"
-  sudo mkdir -p "${EFI_MOUNT_DIR}"
-  sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p1" "${EFI_MOUNT_DIR}"
-  sudo cp /usr/bin/qemu-aarch64-static "${ROOT_MOUNT_DIR}/usr/bin/"
-  sudo mount --bind /dev "${ROOT_MOUNT_DIR}/dev"
-  sudo mount --bind /proc "${ROOT_MOUNT_DIR}/proc"
-  sudo mount --bind /sys "${ROOT_MOUNT_DIR}/sys"
-  sudo mount --bind /run "${ROOT_MOUNT_DIR}/run"
+  sudo mkdir -p "${root_mount_dir}"
+  sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p2" "${root_mount_dir}"
+  sudo mkdir -p "${efi_mount_dir}"
+  sudo mount "/dev/mapper/$(basename "${LOOP_DEVICE}")p1" "${efi_mount_dir}"
+  sudo cp /usr/bin/qemu-aarch64-static "${root_mount_dir}/usr/bin/"
+  sudo mount --bind /dev "${root_mount_dir}/dev"
+  sudo mount --bind /proc "${root_mount_dir}/proc"
+  sudo mount --bind /sys "${root_mount_dir}/sys"
+  sudo mount --bind /run "${root_mount_dir}/run"
 }
 
 convert_guest_image() {
@@ -297,9 +299,8 @@ run_guest_boot_sanity_checks() {
 }
 
 apply_acpi_fix() {
+  local boot_dir="${1:-${EFI_MOUNT_DIR}}"
   log_step "Applying ACPI fix to guest filesystem"
-
-  local boot_dir="${EFI_MOUNT_DIR}"
 
   # Modify cmdline.txt
   local cmdline_file="${boot_dir}/cmdline.txt"
@@ -395,13 +396,15 @@ run_boot_smoke_validation() {
 }
 
 unmount_guest_filesystems() {
+  local root_mount_dir="${1:-${ROOT_MOUNT_DIR}}"
+  local efi_mount_dir="${2:-${EFI_MOUNT_DIR}}"
   log_step "Unmounting guest filesystems"
-  if mountpoint -q "${ROOT_MOUNT_DIR}/dev"; then sudo umount "${ROOT_MOUNT_DIR}/dev"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/proc"; then sudo umount "${ROOT_MOUNT_DIR}/proc"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/sys"; then sudo umount "${ROOT_MOUNT_DIR}/sys"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}/run"; then sudo umount "${ROOT_MOUNT_DIR}/run"; fi
-  if mountpoint -q "${EFI_MOUNT_DIR}"; then sudo umount "${EFI_MOUNT_DIR}"; fi
-  if mountpoint -q "${ROOT_MOUNT_DIR}"; then sudo umount "${ROOT_MOUNT_DIR}"; fi
+  if mountpoint -q "${root_mount_dir}/dev"; then sudo umount "${root_mount_dir}/dev"; fi
+  if mountpoint -q "${root_mount_dir}/proc"; then sudo umount "${root_mount_dir}/proc"; fi
+  if mountpoint -q "${root_mount_dir}/sys"; then sudo umount "${root_mount_dir}/sys"; fi
+  if mountpoint -q "${root_mount_dir}/run"; then sudo umount "${root_mount_dir}/run"; fi
+  if mountpoint -q "${efi_mount_dir}"; then sudo umount "${efi_mount_dir}"; fi
+  if mountpoint -q "${root_mount_dir}"; then sudo umount "${root_mount_dir}"; fi
 }
 
 convert_to_qcow2() {
@@ -435,12 +438,12 @@ build_single_containerdisk() {
   validate_host_tools
   download_source_image
   expand_and_map_image
-  mount_guest_filesystems
+  mount_guest_filesystems "${ROOT_MOUNT_DIR}" "${EFI_MOUNT_DIR}"
   convert_guest_image
   add_userconf_trixie
   run_guest_boot_sanity_checks
-  apply_acpi_fix
-  unmount_guest_filesystems || return 1
+  apply_acpi_fix "${EFI_MOUNT_DIR}"
+  unmount_guest_filesystems "${ROOT_MOUNT_DIR}" "${EFI_MOUNT_DIR}" || return 1
   convert_to_qcow2
   # run_boot_smoke_validation
   build_containerdisk_image "${image_tag}"
@@ -672,7 +675,7 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
       log_step "Trixie build failed, stopping"
       exit 1
     }
-    build_single_containerdisk "$BOOKWORM_IMG_NAME" || {
+    build_bookworm_containerdisk || {
       log_step "Bookworm build failed, stopping"
       exit 1
     }
