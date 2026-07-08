@@ -65,33 +65,17 @@ require_file() {
 }
 
 validate_runtime_inputs() {
-  local push_image_status=0
-
+  local push_state
   if should_push_image; then
-    # Check if already logged in to GHCR via docker config
-    if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
-      log_step "Using existing GHCR login"
-      # Extract username from docker config if GHCR_USERNAME not set
-      if [[ -z "${GHCR_USERNAME:-}" ]]; then
-        GHCR_USERNAME=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f1)
-        readonly GHCR_USERNAME
-      fi
-      if [[ -z "${GHCR_TOKEN:-}" ]]; then
-        GHCR_TOKEN=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f2-)
-        readonly GHCR_TOKEN
-      fi
-    elif [[ -n "${GHCR_USERNAME:-}" ]] && [[ -n "${GHCR_TOKEN:-}" ]]; then
-      log_step "Using provided GHCR credentials"
-    else
-      echo "Error: Required environment variables GHCR_USERNAME and GHCR_TOKEN are not set." >&2
-      return 1
-    fi
+    push_state=0
   else
-    push_image_status=$?
-    if [[ "${push_image_status}" -ne 1 ]]; then
-      return "${push_image_status}"
-    fi
+    push_state=$?
   fi
+  case "${push_state}" in
+    0) validate_ghcr_credentials ;;
+    1) return 0 ;;
+    *) return ${push_state} ;;
+  esac
 }
 
 validate_bootstrap_tools() {
@@ -119,6 +103,27 @@ validate_host_tools() {
   done
   require_file "${BOOT_SMOKE_UEFI_CODE_FD}" || return 1
   require_file "${BOOT_SMOKE_UEFI_VARS_TEMPLATE_FD}" || return 1
+}
+
+validate_ghcr_credentials() {
+  if should_push_image; then
+    if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
+      log_step "Using existing GHCR login"
+      if [[ -z "${GHCR_USERNAME:-}" ]]; then
+        GHCR_USERNAME=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f1)
+        readonly GHCR_USERNAME
+      fi
+      if [[ -z "${GHCR_TOKEN:-}" ]]; then
+        GHCR_TOKEN=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f2-)
+        readonly GHCR_TOKEN
+      fi
+    elif [[ -n "${GHCR_USERNAME:-}" ]] && [[ -n "${GHCR_TOKEN:-}" ]]; then
+      log_step "Using provided GHCR credentials"
+    else
+      echo "Error: Required environment variables GHCR_USERNAME and GHCR_TOKEN are not set." >&2
+      return 1
+    fi
+  fi
 }
 
 default_image_tag() {
@@ -473,6 +478,7 @@ build_bookworm_containerdisk() {
   local image_tag="${IMAGE_TAG_OVERRIDE:-ghcr.io/ipa-big/kubevirt_containerdisk/${image_name_no_date}:${date_part}}"
 
   log_step "Building containerdisk image from ${BOOKWORM_IMG_NAME}"
+  validate_runtime_inputs
   validate_bootstrap_tools
   install_host_dependencies
   validate_host_tools
@@ -659,6 +665,7 @@ build_containerdisk_image_bookworm() {
   local image_tag="$1"
   if should_push_image; then
     log_step "Building and pushing containerdisk image"
+    # Check if already logged in to GHCR
     if ! docker info 2>&1 | grep -q "ghcr.io"; then
       docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
