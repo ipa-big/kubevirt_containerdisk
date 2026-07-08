@@ -27,6 +27,7 @@ jobs:
       - name: Build and push Trixie containerdisk
         env:
           BUILD_TARGET: 'trixie'
+          PUSH_IMAGE: 'true'
         run: bash ./build-raspios-lite-containerdisk.sh
 
   publish-bookworm-containerdisk:
@@ -48,4 +49,5 @@ jobs:
       - name: Build and push Bookworm containerdisk
         env:
           BUILD_TARGET: 'bookworm'
+          PUSH_IMAGE: 'true'
         run: bash ./build-raspios-lite-containerdisk.sh
