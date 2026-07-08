@@ -68,7 +68,7 @@ validate_runtime_inputs() {
   local push_image_status=0
 
   if should_push_image; then
-    # Check if already logged in to GHCR
+    # Check if already logged in to GHCR via docker config
     if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
       log_step "Using existing GHCR login"
       # Extract username from docker config if GHCR_USERNAME not set
@@ -80,6 +80,8 @@ validate_runtime_inputs() {
         GHCR_TOKEN=$(grep -A2 '"ghcr.io"' "${HOME}/.docker/config.json" 2>/dev/null | grep '"auth"' | head -1 | cut -d'"' -f4 | base64 -d | cut -d: -f2-)
         readonly GHCR_TOKEN
       fi
+    elif [[ -n "${GHCR_USERNAME:-}" ]] && [[ -n "${GHCR_TOKEN:-}" ]]; then
+      log_step "Using provided GHCR credentials"
     else
       echo "Error: Required environment variables GHCR_USERNAME and GHCR_TOKEN are not set." >&2
       return 1
