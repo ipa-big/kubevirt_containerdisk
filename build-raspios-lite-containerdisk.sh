@@ -426,6 +426,7 @@ build_containerdisk_image() {
     log_step "Building and pushing containerdisk image"
     # Check if already logged in to GHCR
     if ! docker info 2>&1 | grep -q "ghcr.io"; then
+      log_step "Logging into container registry with provided credentials"
       docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --push .
@@ -667,6 +668,7 @@ build_containerdisk_image_bookworm() {
     log_step "Building and pushing containerdisk image"
     # Check if already logged in to GHCR
     if ! docker info 2>&1 | grep -q "ghcr.io"; then
+      log_step "Logging into container registry with provided credentials"
       docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${BOOKWORM_IMG_PLATFORM}" -t "${image_tag}" --push .
