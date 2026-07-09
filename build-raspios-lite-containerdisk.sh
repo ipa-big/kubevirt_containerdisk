@@ -424,9 +424,10 @@ build_containerdisk_image() {
 
   if should_push_image; then
     log_step "Building and pushing containerdisk image"
-    # Check if already logged in to GHCR
-    if ! docker info 2>&1 | grep -q "ghcr.io"; then
-      log_step "Logging into container registry with provided credentials"
+    if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
+      log_step "Using existing GHCR login"
+    else
+      log_step "Logging into container registry"
       docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${IMG_PLATFORM}" -t "${image_tag}" --push .
@@ -666,9 +667,10 @@ build_containerdisk_image_bookworm() {
   local image_tag="$1"
   if should_push_image; then
     log_step "Building and pushing containerdisk image"
-    # Check if already logged in to GHCR
-    if ! docker info 2>&1 | grep -q "ghcr.io"; then
-      log_step "Logging into container registry with provided credentials"
+    if [[ -f "${HOME}/.docker/config.json" ]] && grep -q "ghcr.io" "${HOME}/.docker/config.json" 2>/dev/null; then
+      log_step "Using existing GHCR login"
+    else
+      log_step "Logging into container registry"
       docker login ghcr.io -u "${GHCR_USERNAME:-}" --password-stdin <<< "${GHCR_TOKEN:-}"
     fi
     docker buildx build --platform "${BOOKWORM_IMG_PLATFORM}" -t "${image_tag}" --push .
